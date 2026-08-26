@@ -1,0 +1,7 @@
+.env
+whale_alert_state.json
+whale_alert.log
+whale_alert.log.bak
+__pycache__/
+*.pyc
+.venv/
