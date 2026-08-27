@@ -66,12 +66,19 @@ CONFIG = {
     "discord_webhook_url": os.environ.get("DISCORD_WEBHOOK_URL", ""),
 
     # Keywords to match (case-insensitive). Any hit triggers an alert.
+    #
+    # Deliberately does NOT include "Alki" / "Elliott Bay" / "West Seattle" (removed
+    # 2026-08-27). Those were harmless while the West Seattle Blog source only polled
+    # its pre-filtered whale-category feed, but that feed turned out to silently lag
+    # the main feed (see SOURCES below) -- and against the *unfiltered* main feed,
+    # those three are neighborhood names that show up in nearly every single post's
+    # body/footer, causing near-constant false positives. Every real match caught so
+    # far already had a species word directly in the title, so this costs no coverage.
     "keywords": [
         "whale", "orca", "humpback", "gray whale", "grey whale",
         "killer whale", "pod", "breach", "spyhop", "cetacean",
         "porpoise", "dolphin", "J pod", "K pod", "L pod",
         "Bigg's", "transient", "southern resident",
-        "Alki", "Elliott Bay", "West Seattle",
     ],
 
     # Where to store seen URLs so we don't re-alert on the same post
@@ -99,10 +106,16 @@ SOURCES = [
     {
         "name": "West Seattle Blog",
         "type": "rss",
-        # Their dedicated whale category feed
-        "url": "https://westseattleblog.com/category/whales/feed/",
-        # Fallback: main site feed (broader, more noise)
-        # "url": "https://westseattleblog.com/feed/",
+        # Switched to the main site feed (2026-08-27) after confirming the
+        # dedicated whale-category feed silently lags behind it -- a real post
+        # was live on the main feed but never appeared in the category feed,
+        # with no error to catch (200 OK, just missing the entry). Broader/
+        # noisier, but keyword matching below already filters every source,
+        # so this just means more non-matching entries get scanned and
+        # discarded per run.
+        "url": "https://westseattleblog.com/feed/",
+        # Old, unreliable source -- kept for reference:
+        # "url": "https://westseattleblog.com/category/whales/feed/",
     },
     {
         "name": "OrcaSound news",
@@ -151,8 +164,18 @@ def save_state(state: dict) -> None:
     CONFIG["state_file"].write_text(json.dumps(state, indent=2))
 
 
+# Known real-world phrases that contain a keyword but aren't a sighting -- e.g. "Whale
+# Tail Park" is an actual landmark (a playground name), so any post mentioning it
+# (community events, unrelated local news) matches "whale" on an unfiltered feed
+# regardless of how narrow the rest of the keyword list is. Stripped out before
+# matching; a real sighting post still matches independently via "whale"/"orca" elsewhere.
+FALSE_POSITIVE_PHRASES = ["whale tail park", "whale tail playground"]
+
+
 def matches_keywords(text: str) -> bool:
     lower = text.lower()
+    for phrase in FALSE_POSITIVE_PHRASES:
+        lower = lower.replace(phrase, "")
     return any(kw.lower() in lower for kw in CONFIG["keywords"])
 
 
@@ -537,4 +560,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
