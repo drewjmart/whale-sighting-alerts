@@ -13,7 +13,9 @@ Windows Task Scheduler.
 
 The monitor currently aggregates from two RSS feeds:
 
-- **West Seattle Blog** — dedicated whale category feed.
+- **West Seattle Blog** — main site feed, not the dedicated whale-category
+  feed (the category feed was found to silently lag behind the main one —
+  see the bug writeup below for the full story).
 - **OrcaSound news** — blog/news feed.
 
 *A third source, Orca Network's "recent sightings" page, was originally
@@ -27,10 +29,12 @@ circumvented.*
 
 ## Dedup and delivery
 
-Keyword match (whale, orca, humpback, pod names, location terms like
-Alki/Elliott Bay) against title and body text, then a JSON state file
-tracking seen URLs, trimmed to the last 2,000 entries so it doesn't grow
-unbounded.
+Keyword match (whale, orca, humpback, pod names) against title and body
+text, then a JSON state file tracking seen URLs, trimmed to the last 2,000
+entries so it doesn't grow unbounded. A small exclusion list also strips
+out known false-positive phrases — like "Whale Tail Park," an actual West
+Seattle playground — that would otherwise trigger on a species word
+appearing inside an unrelated proper noun.
 
 Notifications go out through two parallel, independently-failing channels:
 
@@ -94,6 +98,48 @@ listed in `SOURCES`. When Orca Network was disabled, it would otherwise
 still be sitting in an old state file and warning as "stale" forever, for
 a source that was deliberately turned off, not broken. Checking the active
 source list first avoids that.
+
+## Bug found and fixed: silent partial staleness
+
+The source-health monitoring above catches a feed going fully silent — zero
+successful fetches for 48+ hours. It does not catch a feed that's
+technically alive, returning `200 OK` on every request, while silently
+missing individual entries. That's a different failure mode entirely, and
+nothing before this caught it.
+
+It surfaced in person: a real sighting post ("WHALES: Orcas in Elliott
+Bay," posted 8:26am) never triggered an alert. Investigating turned up the
+actual cause — West Seattle Blog's dedicated whale-category feed lags
+behind their main site feed. The post was live on the main feed the whole
+time; it just never appeared in the category feed the monitor was actually
+polling.
+
+The fix was switching polling to the main feed — but that immediately
+surfaced a second issue. The main feed is unfiltered, and three of the
+existing keywords ("Alki," "Elliott Bay," "West Seattle") are neighborhood
+names that show up in nearly every West Seattle Blog post's body text
+regardless of subject. Initial dry-run testing against the main feed
+produced 11 "matches," 10 of them false positives from those three
+keywords alone.
+
+Those three were removed after confirming every genuine historical match
+already had a species word — "whale," "orca" — directly in the title, so
+dropping the neighborhood terms cost no real coverage. A second, narrower
+false positive turned up next: "Whale Tail Park," an actual West Seattle
+playground, matches on the word "whale" by itself. Rather than remove
+"whale" from the keyword list, that's handled with a small exclusion list
+for known false-positive phrases.
+
+Verified before trusting any of this: the dry run went from 11 false
+matches down to exactly one real one once the keyword list and exclusion
+list were both in place. A live run then correctly caught the originally
+missed post and delivered it through both email and Discord, and a
+follow-up run confirmed no duplicate alert went out for it.
+
+Residual risk, stated plainly: this trades the old staleness problem for
+an ongoing, small chance that some other unrelated post collides with a
+keyword the same way Whale Tail Park did. That's not solved permanently —
+it's handled case-by-case via the exclusion list as new collisions turn up.
 
 ## Known limitations
 
