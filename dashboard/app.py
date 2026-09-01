@@ -84,4 +84,9 @@ def region_view(region_name: str):
 
 
 if __name__ == "__main__":
+    # Run as `python -m dashboard.app` from the repo root, NOT
+    # `python dashboard/app.py` directly -- confirmed the latter breaks
+    # the sibling-package imports above (analysis, storage, viz) since a
+    # directly-executed script only gets its own directory on sys.path,
+    # not the repo root. `flask run` (FLASK_APP=dashboard.app) also works.
     app.run(debug=True)
