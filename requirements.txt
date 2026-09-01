@@ -4,3 +4,8 @@ beautifulsoup4==4.12.3
 astral==3.2
 python-dotenv==1.0.1
 tzdata==2024.2
+pandas==2.2.3
+folium==0.18.0
+plotly==5.24.1
+Flask==3.0.3
+pytest==8.3.3
