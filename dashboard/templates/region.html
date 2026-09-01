@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ region }} — Whale Sighting Tracker{% endblock %}
+{% block content %}
+  <h1>Activity near {{ region }}</h1>
+  <p><a href="/map?region={{ region }}">View on map</a></p>
+  {% if sightings %}
+    <table class="pivot-table">
+      <tr><th>Date</th><th>Species</th><th>Pod</th><th>Source</th></tr>
+      {% for s in sightings %}
+        <tr>
+          <td>{{ s.sighting_date }} {{ s.sighting_time or '' }}</td>
+          <td>{{ s.species }}</td>
+          <td>{{ s.pod_code or '' }}</td>
+          <td>{{ s.source }}</td>
+        </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p>No sightings recorded near {{ region }} yet.</p>
+  {% endif %}
+{% endblock %}
