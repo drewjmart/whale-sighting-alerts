@@ -9,6 +9,38 @@ self-directed after noticing a manual, repetitive task worth automating.
 astral (sunrise/sunset), Discord webhooks. Runs every 30 minutes via
 Windows Task Scheduler.
 
+## Recent Updates
+
+### Historical Whale Sighting Trends & Migration Map (Added September 2026)
+Extended the monitor from live-only alerting to historical trend analysis
+and geospatial tracking across orcas, humpbacks, and gray whales.
+
+- Ingests historical sightings from the Orca Network archive and the
+  Acartia API (Salish Sea data cooperative) — 4,176 verified records
+  spanning March–September 2026
+- Normalizes orca pod identity (J/K/L, Bigg's/Transient) from free-text
+  reports; tracks other species by name
+- Correlates orca presence with Chinook salmon abundance (Albion test
+  fishery, Bonneville Dam), based on published research tying SRKW
+  habitat use to salmon returns — not applied to other species
+- Adds tide state as a secondary environmental factor across species
+- Includes an experimental (unvalidated) moon phase column, clearly
+  flagged as exploratory
+- Push alerts now scoped to a configurable West Seattle radius; the
+  historical tracker itself is unrestricted and queryable for any
+  Washington region on demand
+- Local dashboard (Flask/FastAPI) and a `/whales` Discord slash command
+  for checking activity remotely — currently local-only by design,
+  hosted deployment deferred pending confirmation of Acartia's data
+  redistribution guidelines
+
+Data sources: [Acartia](https://acartia.io), with founding contributions
+from [Orca Network](https://orcanetwork.org) and
+[Orcasound](https://orcasound.net). Salmon data from the Albion test
+fishery (DFO) and Bonneville Dam. Tide data from NOAA CO-OPS.
+
+See [PR #1](../../pull/1) for full implementation details.
+
 ## Sources
 
 The monitor currently aggregates from two RSS feeds:
