@@ -23,10 +23,29 @@ response fields (confirmed, not assumed):
     J pod, northbound... (Susan Berta)" -- see normalization/pod_resolver.py),
     profile {name}, entry_id, ssemmi_date_added, submitter_did, signature.
 
-Registration for a Bearer token (needed for historical/trusted-only
-endpoints) requires admin approval -- no instant self-serve. This client
-works fully unauthenticated against /current today; pass `token` once
-approved and it gets added as an Authorization header automatically.
+Registration for a token requires admin approval -- no instant self-serve
+(this client's unauthenticated /current method was built and used during
+that wait). Token received and verified live 2026-09-04 -- corrected two
+assumptions the wait-period design had made:
+
+  - **Auth mechanism**: the real docs (DOCS.md in salish-sea/acartia) list
+    `access_token` as a request PARAMETER on every authenticated endpoint,
+    not an `Authorization: Bearer` header. Tested both live against
+    `/sightings/trusted` (both returned `200` + `[]`, inconclusive) and
+    `/sightings` (only the query-param form returned real data) -- so this
+    client sends it as a param, matching the docs and the working test.
+  - **What the token actually unlocks**: `GET /sightings` (labeled
+    "current sightings, with token" in the docs) is NOT time-limited to 7
+    days like its unauthenticated sibling despite the label -- a real pull
+    returned 4,176 records back to March 2026, vs. 156 in the public
+    /current endpoint for the same moment. This is the real historical
+    depth the original spec was waiting on.
+
+Also found and fixed during that same real pull: ~0.7% of authenticated
+records (31/4176) use JS `Date.toString()` format for `created`
+("Wed Jun 10 2026 05:59:35 GMT+0000 (Coordinated Universal Time)") instead
+of the standard format -- `_parse_created()` handles both rather than
+silently dropping those records.
 """
 
 from __future__ import annotations
@@ -41,7 +60,9 @@ import requests
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://acartia.io/api/v1"
-CURRENT_ENDPOINT = f"{BASE_URL}/sightings/current"
+CURRENT_ENDPOINT = f"{BASE_URL}/sightings/current"       # unauthenticated, last 7 days
+AUTHENTICATED_ENDPOINT = f"{BASE_URL}/sightings"          # token required, NOT time-limited (see module docstring)
+TRUSTED_ENDPOINT = f"{BASE_URL}/sightings/trusted"        # token required; returned [] in testing -- see get_trusted_sightings()
 REQUEST_TIMEOUT = 20
 
 
@@ -67,13 +88,29 @@ class AcartiaSighting:
     photo_url: str
 
     @classmethod
+    def _parse_created(cls, value: str) -> datetime:
+        # Confirmed live (2026-09-04, via the authenticated /sightings endpoint):
+        # older records use the standard "YYYY-MM-DD HH:MM:SS" format, but ~0.7%
+        # (31/4176 in a real pull) use JS Date.toString() instead, e.g.
+        # "Wed Jun 10 2026 05:59:35 GMT+0000 (Coordinated Universal Time)" --
+        # some client somewhere serialized with str(Date) instead of an ISO
+        # format. Try both rather than silently dropping otherwise-good records.
+        try:
+            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+        try:
+            core = value.split(" (")[0]  # strip the "(Coordinated Universal Time)" suffix
+            return datetime.strptime(core, "%a %b %d %Y %H:%M:%S GMT%z")
+        except ValueError:
+            raise AcartiaClientError(f"unparseable 'created' timestamp: {value!r}")
+
+    @classmethod
     def from_raw(cls, raw: dict[str, Any]) -> "AcartiaSighting":
         try:
-            created = datetime.strptime(raw["created"], "%Y-%m-%d %H:%M:%S").replace(
-                tzinfo=timezone.utc
-            )
-        except (KeyError, ValueError) as exc:
-            raise AcartiaClientError(f"unparseable 'created' timestamp: {raw.get('created')!r}") from exc
+            created = cls._parse_created(raw["created"])
+        except KeyError as exc:
+            raise AcartiaClientError("missing 'created' timestamp") from exc
 
         try:
             lat = float(raw["latitude"])
@@ -110,32 +147,27 @@ class AcartiaSighting:
 class AcartiaClient:
     """Thin client over the Acartia sightings API.
 
-    Works fully unauthenticated against /current today. Pass `token` (a
-    Bearer token, once your registration is approved -- see module
-    docstring) to also enable authenticated endpoints later; unset, this
-    client simply omits the Authorization header and sticks to /current.
+    `get_current_sightings()` works fully unauthenticated. Pass `token`
+    (your approved access token -- see module docstring) to also use
+    `get_all_sightings()` (real historical depth, not just 7 days) and
+    `get_trusted_sightings()`. Sent as an `access_token` query parameter,
+    per the real API docs and a live test -- not an Authorization header.
     """
 
     def __init__(self, token: str | None = None, session: requests.Session | None = None):
         self.token = token
         self.session = session or requests.Session()
 
-    def _headers(self) -> dict[str, str]:
-        headers = {"Accept": "application/json"}
-        if self.token:
-            headers["Authorization"] = f"Bearer {self.token}"
-        return headers
+    def _fetch(self, url: str, *, requires_token: bool = False) -> list[AcartiaSighting]:
+        if requires_token and not self.token:
+            raise AcartiaClientError(f"{url} requires a token -- none was provided to this client")
 
-    def get_current_sightings(self) -> list[AcartiaSighting]:
-        """GET /sightings/current -- last 7 days, all species/providers/trust levels.
-        Unauthenticated; works with no token at all."""
+        params = {"access_token": self.token} if self.token else {}
         try:
-            resp = self.session.get(
-                CURRENT_ENDPOINT, headers=self._headers(), timeout=REQUEST_TIMEOUT
-            )
+            resp = self.session.get(url, params=params, timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
         except requests.RequestException as exc:
-            raise AcartiaClientError(f"request to {CURRENT_ENDPOINT} failed: {exc}") from exc
+            raise AcartiaClientError(f"request to {url} failed: {exc}") from exc
 
         try:
             raw_records = resp.json()
@@ -156,16 +188,49 @@ class AcartiaClient:
                 skipped += 1
                 logger.warning("skipped unparseable Acartia record: %s", exc)
         if skipped:
-            logger.info("Acartia: skipped %d/%d unparseable record(s)", skipped, len(raw_records))
+            logger.info("Acartia (%s): skipped %d/%d unparseable record(s)", url, skipped, len(raw_records))
 
         return sightings
+
+    def get_current_sightings(self) -> list[AcartiaSighting]:
+        """GET /sightings/current -- last 7 days, all species/providers/trust levels.
+        Unauthenticated; works with no token at all."""
+        return self._fetch(CURRENT_ENDPOINT)
+
+    def get_all_sightings(self) -> list[AcartiaSighting]:
+        """GET /sightings (with access_token) -- confirmed live NOT time-limited
+        despite the docs' "current sightings" label; a real pull returned 4,176
+        records back to March 2026. Requires a token."""
+        return self._fetch(AUTHENTICATED_ENDPOINT, requires_token=True)
+
+    def get_trusted_sightings(self) -> list[AcartiaSighting]:
+        """GET /sightings/trusted -- returned an empty list in live testing
+        (2026-09-04), which may just mean nothing is currently flagged trusted
+        via this endpoint rather than indicating a client bug -- the same auth
+        mechanism confirmed working on get_all_sightings() is used here.
+        Requires a token."""
+        return self._fetch(TRUSTED_ENDPOINT, requires_token=True)
 
 
 if __name__ == "__main__":
     # Quick manual smoke test: python -m ingestion.acartia_client
     logging.basicConfig(level=logging.INFO)
-    client = AcartiaClient()
+    import os
+
+    from dotenv import load_dotenv
+    from pathlib import Path
+
+    load_dotenv(Path(__file__).parent.parent / ".env")
+    token = os.environ.get("ACARTIA_API_TOKEN")
+
+    client = AcartiaClient(token=token)
     results = client.get_current_sightings()
-    print(f"Fetched {len(results)} current sightings.")
+    print(f"Fetched {len(results)} current sightings (unauthenticated).")
     for s in results[:5]:
         print(f"  {s.created_utc.isoformat()}  {s.species_raw:25s}  ({s.latitude:.4f}, {s.longitude:.4f})  {s.comments[:60]}")
+
+    if token:
+        all_sightings = client.get_all_sightings()
+        print(f"\nFetched {len(all_sightings)} sightings (authenticated, full history).")
+    else:
+        print("\nNo ACARTIA_API_TOKEN set -- skipping authenticated endpoint.")

@@ -69,6 +69,18 @@ def test_from_raw_missing_no_sighted_is_none_not_a_crash():
     assert sighting.no_sighted is None
 
 
+def test_from_raw_parses_js_date_tostring_fallback_format():
+    # Confirmed live 2026-09-04: ~0.7% of authenticated /sightings records
+    # (31/4176 in a real pull) use this format instead of the standard one.
+    raw = dict(REAL_SAMPLE_RAW, created="Wed Jun 10 2026 05:59:35 GMT+0000 (Coordinated Universal Time)")
+    sighting = AcartiaSighting.from_raw(raw)
+    assert sighting.created_utc.year == 2026
+    assert sighting.created_utc.month == 6
+    assert sighting.created_utc.day == 10
+    assert sighting.created_utc.hour == 5
+    assert sighting.created_utc.minute == 59
+
+
 def test_from_raw_bad_timestamp_raises_clear_error():
     raw = dict(REAL_SAMPLE_RAW, created="not-a-timestamp")
     with pytest.raises(AcartiaClientError):
@@ -116,3 +128,36 @@ def test_get_current_sightings_against_real_live_api():
         assert isinstance(first, AcartiaSighting)
         assert -90 <= first.latitude <= 90
         assert -180 <= first.longitude <= 180
+
+
+def test_get_all_sightings_requires_a_token():
+    client = AcartiaClient(token=None)
+    with pytest.raises(AcartiaClientError, match="requires a token"):
+        client.get_all_sightings()
+
+
+def test_get_all_sightings_against_real_authenticated_api():
+    """Skips (not fails) if no token is configured -- this is the one test
+    in the suite that needs a real ACARTIA_API_TOKEN in .env, so it must
+    not break for anyone who clones this repo without one."""
+    import os
+
+    from dotenv import load_dotenv
+    from pathlib import Path
+
+    load_dotenv(Path(__file__).parent.parent / ".env")
+    token = os.environ.get("ACARTIA_API_TOKEN")
+    if not token:
+        pytest.skip("ACARTIA_API_TOKEN not set -- skipping authenticated endpoint test")
+
+    client = AcartiaClient(token=token)
+    try:
+        sightings = client.get_all_sightings()
+    except AcartiaClientError as exc:
+        pytest.skip(f"Acartia authenticated API not reachable: {exc}")
+
+    assert isinstance(sightings, list)
+    # Confirmed live 2026-09-04: this endpoint is NOT time-limited to 7 days
+    # despite its docs label -- it should return substantially more than the
+    # unauthenticated /current endpoint's ~150-ish record count.
+    assert len(sightings) > 500

@@ -39,6 +39,16 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Found while wiring up the Acartia token: nothing in this codebase loaded
+# .env anywhere, so DISCORD_BOT_TOKEN and ACARTIA_API_TOKEN (used by
+# build_activity_summary() below, via AcartiaClient) would silently read
+# as unset even when saved. Load it here since this is an entry point
+# (python -m discord_bot.whale_command).
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 from ingestion.acartia_client import AcartiaClient, AcartiaClientError
 from analysis.location_query import _bbox_for_point

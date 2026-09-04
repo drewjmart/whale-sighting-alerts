@@ -78,6 +78,20 @@ def test_boundary_holds_in_every_direction_not_just_north():
         assert is_within_alert_radius(outside_lat, outside_lon) is False, f"bearing {bearing}"
 
 
+def test_config_blank_but_set_env_falls_back_to_default(monkeypatch):
+    # Real bug found 2026-09-04: .env.example (and a real .env copied from
+    # it) ships these SET to an empty string ("ALERT_RADIUS_MILES="), not
+    # unset. os.environ.get(name, default) only falls through when the var
+    # is truly absent, so this used to crash with float(""). Once .env
+    # actually started getting loaded (it wasn't, anywhere, until this
+    # session), every geo_filter call broke immediately.
+    monkeypatch.setenv("ALERT_CENTER_LAT", "")
+    monkeypatch.setenv("ALERT_CENTER_LON", "")
+    monkeypatch.setenv("ALERT_RADIUS_MILES", "")
+    assert is_within_alert_radius(DEFAULT_CENTER_LAT, DEFAULT_CENTER_LON) is True
+    assert is_within_alert_radius(48.5343, -123.0885) is False  # San Juan Island, still excluded
+
+
 def test_config_env_override(monkeypatch):
     # Radius is config-driven, not hardcoded -- confirm env vars actually change behavior.
     monkeypatch.setenv("ALERT_RADIUS_MILES", "1")

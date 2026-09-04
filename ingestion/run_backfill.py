@@ -3,28 +3,37 @@ CLI entry point to ingest sightings and regenerate reports.
 
 Usage: python -m ingestion.run_backfill [--season YEAR] [--db PATH]
 
-**Honest scope note:** despite the --season flag (kept for interface
-compatibility with the original spec's PR template example), this
-currently ingests whatever Acartia's unauthenticated /current endpoint
-returns -- the last 7 days, real-time -- not a deep historical backfill.
-A true multi-year backfill needs either:
-  - Acartia's authenticated historical endpoints (admin-approval-gated,
-    not available yet -- see ingestion/acartia_client.py), or
-  - Orca Network's archive (not live on their relaunched site yet -- see
-    ingestion/orca_network_archive.py).
-Both are wired up and will start contributing real historical depth the
-moment either becomes available, with zero changes needed here. Until
-then, running this regularly (e.g. via the same scheduler as the live
-alert) is how historical depth actually accumulates -- one /current
-window at a time, deduplicated by (source, external_id) -- rather than
-one deep one-shot pull.
+**Scope note (updated 2026-09-04 -- Acartia token received and verified
+live):** with ACARTIA_API_TOKEN set in .env, this now pulls Acartia's
+authenticated /sightings endpoint -- confirmed NOT time-limited to 7 days
+despite its docs label; a real pull returned 4,176 records back to March
+2026, vs. 156 from the unauthenticated /current endpoint for the same
+moment. Without a token, it falls back to /current (last 7 days) exactly
+as before -- the --season flag is still informational only, kept for
+interface compatibility with the original spec's PR template example.
+
+A true multi-year backfill still needs Orca Network's archive too (not
+live on their relaunched site yet -- see ingestion/orca_network_archive.py),
+which remains wired up and ready to contribute the moment it exists.
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import os
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Found while testing the Acartia token: NOTHING in this codebase loaded
+# .env anywhere -- os.environ.get() calls throughout (ACARTIA_API_TOKEN,
+# DISCORD_BOT_TOKEN, ALERT_* in alerts/geo_filter.py) were silently
+# returning None regardless of what was actually saved to .env. This is
+# the main CLI entry point, so it loads .env here; dashboard/app.py and
+# discord_bot/whale_command.py needed the same fix -- see those files.
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analysis.pivots import location_by_species, pod_by_month, species_by_month
 from ingestion.acartia_client import AcartiaClient, AcartiaClientError
@@ -40,31 +49,40 @@ from viz.trends import pod_trend_chart, save_chart, species_trend_chart
 logger = logging.getLogger(__name__)
 
 
+def _acartia_sighting_to_record(s) -> dict:
+    norm = normalize_sighting(s.species_raw, s.comments)
+    return {
+        "sighting_date": s.created_utc.date().isoformat(),
+        "sighting_time": s.created_utc.time().isoformat(),
+        "species": norm["species"],
+        "pod_code": norm["pod_code"],
+        "location_name": None,
+        "latitude": s.latitude,
+        "longitude": s.longitude,
+        "trusted": s.trusted,
+        "source": "acartia",
+        "external_id": s.entry_id,
+        "raw_text": s.comments,
+    }
+
+
 def _ingest_acartia(conn) -> int:
+    token = os.environ.get("ACARTIA_API_TOKEN")
+    client = AcartiaClient(token=token)
+
     try:
-        client = AcartiaClient()
-        sightings = client.get_current_sightings()
+        if token:
+            sightings = client.get_all_sightings()
+            logger.info("Acartia: using authenticated endpoint (token present)")
+        else:
+            sightings = client.get_current_sightings()
+            logger.info("Acartia: no token set -- using unauthenticated /current (last 7 days)")
     except AcartiaClientError as exc:
         logger.error("Acartia ingestion failed: %s", exc)
         db.record_ingestion_failure(conn, "acartia")
         return 0
 
-    records = []
-    for s in sightings:
-        norm = normalize_sighting(s.species_raw, s.comments)
-        records.append({
-            "sighting_date": s.created_utc.date().isoformat(),
-            "sighting_time": s.created_utc.time().isoformat(),
-            "species": norm["species"],
-            "pod_code": norm["pod_code"],
-            "location_name": None,
-            "latitude": s.latitude,
-            "longitude": s.longitude,
-            "trusted": s.trusted,
-            "source": "acartia",
-            "external_id": s.entry_id,
-            "raw_text": s.comments,
-        })
+    records = [_acartia_sighting_to_record(s) for s in sightings]
     inserted, duplicates = db.insert_sightings(conn, records)
     db.record_ingestion_run(conn, "acartia", inserted)
     logger.info("Acartia: %d new, %d already seen", inserted, duplicates)

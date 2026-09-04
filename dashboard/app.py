@@ -8,7 +8,16 @@ this PR -- see README §Phase 2 for the (separate, later) Render step.
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from dotenv import load_dotenv
 from flask import Flask, abort, render_template, request
+
+# Found while wiring up the Acartia token: nothing in this codebase loaded
+# .env anywhere, so ALERT_CENTER_LAT/LON/RADIUS_MILES (alerts/geo_filter.py)
+# would silently fall back to defaults even when set. Load it here since
+# this is an entry point (python -m dashboard.app / flask run).
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analysis.location_query import known_regions, query_region
 from analysis.pivots import location_by_species, pod_by_month, species_by_month

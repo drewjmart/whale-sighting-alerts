@@ -38,14 +38,24 @@ def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> floa
     return 2 * EARTH_RADIUS_MILES * math.asin(math.sqrt(a))
 
 
+def _env_float(name: str, default: float) -> float:
+    # os.environ.get(name, default) only falls through to `default` when
+    # the var is entirely UNSET. .env.example (and a real .env copied from
+    # it) ships these blank -- "ALERT_CENTER_LAT=" -- which is SET to "",
+    # not unset, so .get() returned "" and float("") crashed. Found this
+    # once .env actually started getting loaded (see run_backfill.py).
+    value = os.environ.get(name, "").strip()
+    return float(value) if value else default
+
+
 def get_alert_center() -> tuple[float, float]:
-    lat = float(os.environ.get("ALERT_CENTER_LAT", DEFAULT_CENTER_LAT))
-    lon = float(os.environ.get("ALERT_CENTER_LON", DEFAULT_CENTER_LON))
+    lat = _env_float("ALERT_CENTER_LAT", DEFAULT_CENTER_LAT)
+    lon = _env_float("ALERT_CENTER_LON", DEFAULT_CENTER_LON)
     return lat, lon
 
 
 def get_alert_radius_miles() -> float:
-    return float(os.environ.get("ALERT_RADIUS_MILES", DEFAULT_RADIUS_MILES))
+    return _env_float("ALERT_RADIUS_MILES", DEFAULT_RADIUS_MILES)
 
 
 def is_within_alert_radius(lat: float, lon: float) -> bool:
