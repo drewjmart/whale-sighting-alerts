@@ -173,6 +173,35 @@ def chinook_cpue_trend(conn: sqlite3.Connection) -> pd.DataFrame:
     return daily
 
 
+def chinook_cpue_vs_orca_sightings(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Daily Chinook CPUE alongside daily orca sighting counts, for judging
+    by eye whether sighting frequency tracks salmon abundance. Sighting
+    count is orca-only, matching CPUE's own orca-relevant scope (the
+    feature hierarchy explicitly says this correlation doesn't apply to
+    humpback/gray whale, so comparing it against all-species counts would
+    be a meaningless mix). Outer-joined on date so a day with sightings
+    but no CPUE data (or vice versa) still shows up rather than being
+    silently dropped -- callers decide how to handle the gaps (the chart
+    normalizes and Plotly's line breaks over NaN).
+
+    Returns raw values in both columns -- normalization for display is a
+    viz-layer decision (viz/correlations.py), not baked into the data.
+    """
+    cpue = chinook_cpue_trend(conn)
+
+    rows = conn.execute(
+        "SELECT sighting_date AS date, COUNT(*) AS sighting_count "
+        "FROM sightings WHERE species = 'orca' GROUP BY sighting_date"
+    ).fetchall()
+    counts = pd.DataFrame([dict(r) for r in rows])
+
+    if cpue.empty and counts.empty:
+        return pd.DataFrame(columns=["date", "chinook_cpue", "sighting_count"])
+
+    merged = pd.merge(cpue, counts, on="date", how="outer").sort_values("date")
+    return merged.reset_index(drop=True)
+
+
 def tide_height_trend(conn: sqlite3.Connection) -> pd.DataFrame:
     """Tide height over the same date range as the data, for placing next
     to the sightings-by-tide-state chart. Uses the tide_height_ft already
