@@ -10,6 +10,8 @@ a substring to the wrong place) is worse than returning "unresolved."
 
 from __future__ import annotations
 
+import math
+
 # (lat, lon) for well-known Salish Sea whale-watching/reporting locations.
 # Keys are the canonical lowercase name; ALIASES below maps common
 # variant text to a canonical key.
@@ -69,3 +71,41 @@ def geocode_location(location_text: str | None) -> tuple[float, float] | None:
             return _LOCATIONS[canonical]
 
     return None
+
+
+DEFAULT_MAX_NEAREST_MILES = 15.0
+
+
+def nearest_known_location(lat: float, lon: float, max_distance_miles: float = DEFAULT_MAX_NEAREST_MILES) -> str | None:
+    """Reverse of geocode_location(): given real coordinates (Acartia's
+    normal case -- it reports lat/lon directly, not a place name), find the
+    closest named place from the same table, for human-readable display
+    (e.g. the 24h summary on the dashboard home page).
+
+    Returns None beyond max_distance_miles rather than reporting a place
+    that's actually nowhere near the sighting -- same "explicit unresolved
+    bucket over a wrong guess" principle used everywhere else in this
+    project (pod resolution, geocode_location itself).
+    """
+    best_name, best_distance = None, None
+    for name, (place_lat, place_lon) in _LOCATIONS.items():
+        distance = _haversine_miles(lat, lon, place_lat, place_lon)
+        if best_distance is None or distance < best_distance:
+            best_name, best_distance = name, distance
+
+    if best_distance is not None and best_distance <= max_distance_miles:
+        return best_name.title()
+    return None
+
+
+def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    # Small, deliberately duplicated rather than imported from
+    # alerts/geo_filter.py -- that package is specifically the live-alert's
+    # concern, and this module (normalization) shouldn't depend on it for
+    # a five-line formula.
+    earth_radius_miles = 3958.8
+    lat1_r, lon1_r, lat2_r, lon2_r = map(math.radians, (lat1, lon1, lat2, lon2))
+    d_lat = lat2_r - lat1_r
+    d_lon = lon2_r - lon1_r
+    a = math.sin(d_lat / 2) ** 2 + math.cos(lat1_r) * math.cos(lat2_r) * math.sin(d_lon / 2) ** 2
+    return 2 * earth_radius_miles * math.asin(math.sqrt(a))

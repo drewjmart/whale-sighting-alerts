@@ -20,7 +20,7 @@ from flask import Flask, abort, render_template, request
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analysis.location_query import known_regions, query_region
-from analysis.pivots import location_by_species, pod_by_month, species_by_month
+from analysis.pivots import location_by_species, pod_by_month, recent_24h_summary, species_by_month
 from normalization.pod_resolver import VALID_SPECIES
 from storage.db import DEFAULT_DB_PATH, get_connection
 from viz.correlations import chinook_cpue_chart, seasonal_chart, tide_height_chart, tide_state_chart
@@ -43,9 +43,12 @@ def index():
             species: int(row.sum())
             for species, row in species_by_month(conn).iterrows()
         }
+        recent = recent_24h_summary(conn)
     finally:
         conn.close()
-    return render_template("index.html", species_counts=species_counts, regions=known_regions())
+    return render_template(
+        "index.html", species_counts=species_counts, regions=known_regions(), recent=recent
+    )
 
 
 @app.route("/map")
