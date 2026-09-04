@@ -12,14 +12,14 @@
 
 **Not deployed — local only.** Everything in this update (ingestion, storage, dashboard, Discord command) runs on your own machine right now. Nothing is hosted or publicly accessible. Deployment (making the dashboard reachable from your phone/browser away from your PC) is a separate, later step — see §7a Phase 2 — not part of this PR.
 
-**Blocked item: Acartia API token.** Registered at acartia.io; awaiting admin approval before a Bearer token is issued (see §2 and CONTRIBUTING.md in salish-sea/acartia for why this is a manual approval step, not instant self-serve).
+**Acartia API token: received and verified live (2026-09-04).** Commit #17 done — see the branch's commit history. Two things confirmed empirically against the real API with the real token, correcting assumptions this spec made during the wait:
 
-**This does NOT block the rest of the build.** Everything except authenticated Acartia calls (historical/trusted endpoints) can be built and tested now:
-- Acartia's unauthenticated `GET /sightings/current` endpoint works with no token (last 7 days of data) — use this to build and test the client and normalization logic today
-- Orca Network archive, salmon (Albion/Bonneville), NOAA tides, and moon phase all need no Acartia dependency at all
-- Local dashboard and Discord command can be fully built and tested without the token
+- **Auth mechanism**: the real docs list `access_token` as a request parameter, not an `Authorization: Bearer` header. Tested both live; only the parameter form worked.
+- **What it unlocks**: the authenticated `/sightings` endpoint is NOT time-limited to 7 days despite its docs label — a real pull returned 4,176 records back to March 2026 (vs. 156 from the unauthenticated `/current` endpoint for the same moment). Acceptance criterion #1 ("at least one full season of historical sightings") is now genuinely satisfied.
 
-**When the token arrives:** swap it into the existing `acartia_client.py` (already designed to accept an optional Bearer token param — see §3) and this becomes commit #17 in the sequence, not a blocker on anything that came before it.
+Wiring up the real token also surfaced a real, previously-invisible bug: nothing in this codebase ever called `load_dotenv()`, so every `os.environ.get()` for `ACARTIA_API_TOKEN`, `DISCORD_BOT_TOKEN`, and the `ALERT_*` vars was silently reading as unset regardless of `.env`'s actual contents — fixed in all three entry points (`run_backfill.py`, `dashboard/app.py`, `discord_bot/whale_command.py`). Fixing that then surfaced a second bug: `.env.example` ships `ALERT_*` blank (`ALERT_CENTER_LAT=`), which is *set* to `""`, not unset, so `float("")` crashed every `alerts/geo_filter.py` call the moment `.env` actually started loading. Both fixed, both covered by new tests.
+
+**Usage terms check:** looked for published Acartia community guidelines/redistribution terms beyond what CONTRIBUTING.md already documents (checked their registration page and wiki context page) — found nothing beyond the attribution-to-founding-providers convention already reflected in the README's Data Sources section. Nothing found that restricts local development or the pivot/map output already built here.
 
 ---
 
