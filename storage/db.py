@@ -145,6 +145,51 @@ def upsert_environmental_context(conn: sqlite3.Connection, sighting_id: int, con
     conn.commit()
 
 
+def query_sightings_with_context(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: str | None = None,
+    require_tide: bool = False,
+    require_chinook: bool = False,
+) -> list[sqlite3.Row]:
+    """Sightings joined with their environmental_context row, if any.
+
+    Added 2026-09-05 -- until now, environmental_context had a write path
+    (upsert_environmental_context) but no read path at all; nothing in
+    analysis/viz/dashboard could see the tide/CPUE/moon-phase data that
+    was already being computed and stored on every ingestion run. This is
+    the function analysis/correlations.py's tide and CPUE charts use.
+    """
+    clauses = []
+    params: dict[str, Any] = {}
+
+    if start_date:
+        clauses.append("s.sighting_date >= :start_date")
+        params["start_date"] = start_date
+    if end_date:
+        clauses.append("s.sighting_date <= :end_date")
+        params["end_date"] = end_date
+    if species:
+        clauses.append("s.species = :species")
+        params["species"] = species
+    if require_tide:
+        clauses.append("ec.tide_state IS NOT NULL")
+    if require_chinook:
+        clauses.append("ec.chinook_cpue IS NOT NULL")
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"""
+        SELECT s.*, ec.chinook_cpue, ec.tide_height_ft, ec.tide_state, ec.experimental_moon_phase
+        FROM sightings s
+        LEFT JOIN environmental_context ec ON ec.sighting_id = s.id
+        {where}
+        ORDER BY s.sighting_date, s.sighting_time
+    """
+    return conn.execute(sql, params).fetchall()
+
+
 # ── Source health ────────────────────────────────────────────────────────
 # Same pattern as whale_alert.py's live-alert health check (last_success,
 # STALE_THRESHOLD_HOURS), extended with consecutive_zero_runs -- useful here
