@@ -71,7 +71,13 @@ def data_span_summary(conn: sqlite3.Connection) -> dict:
     }
 
 
-def sightings_by_tide_state(conn: sqlite3.Connection) -> dict:
+def sightings_by_tide_state(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> dict:
     """Does sighting frequency vary by tide state? Returns raw counts AND
     a rate (sightings per hour of exposure to that state), plus an honest
     read on whether the sample supports saying anything.
@@ -85,8 +91,15 @@ def sightings_by_tide_state(conn: sqlite3.Connection) -> dict:
     whales at slack tide" until you account for slack getting a fraction
     of the observation time to begin with. The rate below corrects for
     that; the raw counts are kept alongside for transparency.
+
+    Narrowing with start_date/end_date/species also narrows the tide
+    *exposure* window used for the rate calculation (2026-09-05) -- a
+    filtered date range or a species-only subset should be compared
+    against exposure over that same window, not the whole season's.
     """
-    rows = query_sightings_with_context(conn, require_tide=True)
+    rows = query_sightings_with_context(
+        conn, start_date=start_date, end_date=end_date, species=species, require_tide=True
+    )
     df = pd.DataFrame([dict(r) for r in rows])
 
     if df.empty:
@@ -137,11 +150,38 @@ def sightings_by_tide_state(conn: sqlite3.Connection) -> dict:
     }
 
 
-def sightings_by_season_and_year(conn: sqlite3.Connection) -> tuple[pd.DataFrame, dict]:
+def sightings_by_season_and_year(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> tuple[pd.DataFrame, dict]:
     """Cross-year seasonal view: does sighting timing repeat year to year?
     Returns (pivot table, span metadata) -- callers use the span metadata
-    to decide whether to show a 'preliminary, single season' notice."""
-    rows = conn.execute("SELECT sighting_date, species FROM sightings").fetchall()
+    to decide whether to show a 'preliminary, single season' notice.
+
+    Note: data_span_summary() (which drives the 'preliminary' notice) is
+    intentionally NOT filtered by these params -- it always reflects the
+    whole dataset's span, since "do we have multiple years of data at
+    all" is a fact about the database, not about whatever subset is
+    currently being viewed.
+    """
+    clauses = []
+    params: dict = {}
+    if start_date:
+        clauses.append("sighting_date >= :start_date")
+        params["start_date"] = start_date
+    if end_date:
+        clauses.append("sighting_date <= :end_date")
+        params["end_date"] = end_date
+    if species:
+        placeholders = ", ".join(f":species_{i}" for i in range(len(species)))
+        clauses.append(f"species IN ({placeholders})")
+        params.update({f"species_{i}": s for i, s in enumerate(species)})
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = conn.execute(f"SELECT sighting_date, species FROM sightings {where}", params).fetchall()
     span = data_span_summary(conn)
 
     if not rows:
@@ -159,11 +199,20 @@ def sightings_by_season_and_year(conn: sqlite3.Connection) -> tuple[pd.DataFrame
     return pivot, span
 
 
-def chinook_cpue_trend(conn: sqlite3.Connection) -> pd.DataFrame:
+def chinook_cpue_trend(
+    conn: sqlite3.Connection, *, start_date: str | None = None, end_date: str | None = None
+) -> pd.DataFrame:
     """Daily Chinook CPUE (Bonneville passage count, used as the CPUE
     proxy) over the season -- orca-relevant only, per the feature
-    hierarchy. One row per date with data, not one row per sighting."""
-    rows = query_sightings_with_context(conn, species="orca", require_chinook=True)
+    hierarchy. One row per date with data, not one row per sighting.
+
+    Always species='orca' regardless of any species filter elsewhere on
+    the page -- CPUE has no meaning for other species, so there's nothing
+    to "filter" here; date range is the only applicable narrowing.
+    """
+    rows = query_sightings_with_context(
+        conn, start_date=start_date, end_date=end_date, species="orca", require_chinook=True
+    )
     if not rows:
         return pd.DataFrame(columns=["date", "chinook_cpue"])
 
@@ -173,25 +222,38 @@ def chinook_cpue_trend(conn: sqlite3.Connection) -> pd.DataFrame:
     return daily
 
 
-def chinook_cpue_vs_orca_sightings(conn: sqlite3.Connection) -> pd.DataFrame:
+def chinook_cpue_vs_orca_sightings(
+    conn: sqlite3.Connection, *, start_date: str | None = None, end_date: str | None = None
+) -> pd.DataFrame:
     """Daily Chinook CPUE alongside daily orca sighting counts, for judging
     by eye whether sighting frequency tracks salmon abundance. Sighting
     count is orca-only, matching CPUE's own orca-relevant scope (the
     feature hierarchy explicitly says this correlation doesn't apply to
     humpback/gray whale, so comparing it against all-species counts would
-    be a meaningless mix). Outer-joined on date so a day with sightings
-    but no CPUE data (or vice versa) still shows up rather than being
-    silently dropped -- callers decide how to handle the gaps (the chart
-    normalizes and Plotly's line breaks over NaN).
+    be a meaningless mix) -- so, like chinook_cpue_trend(), this ignores
+    any species filter elsewhere on the page rather than pretending a
+    "humpback CPUE" view means anything. Outer-joined on date so a day
+    with sightings but no CPUE data (or vice versa) still shows up rather
+    than being silently dropped -- callers decide how to handle the gaps
+    (the chart normalizes and Plotly's line breaks over NaN).
 
     Returns raw values in both columns -- normalization for display is a
     viz-layer decision (viz/correlations.py), not baked into the data.
     """
-    cpue = chinook_cpue_trend(conn)
+    cpue = chinook_cpue_trend(conn, start_date=start_date, end_date=end_date)
 
+    clauses = ["species = 'orca'"]
+    params: dict = {}
+    if start_date:
+        clauses.append("sighting_date >= :start_date")
+        params["start_date"] = start_date
+    if end_date:
+        clauses.append("sighting_date <= :end_date")
+        params["end_date"] = end_date
+    where = " AND ".join(clauses)
     rows = conn.execute(
-        "SELECT sighting_date AS date, COUNT(*) AS sighting_count "
-        "FROM sightings WHERE species = 'orca' GROUP BY sighting_date"
+        f"SELECT sighting_date AS date, COUNT(*) AS sighting_count FROM sightings WHERE {where} GROUP BY sighting_date",
+        params,
     ).fetchall()
     counts = pd.DataFrame([dict(r) for r in rows])
 
@@ -202,14 +264,26 @@ def chinook_cpue_vs_orca_sightings(conn: sqlite3.Connection) -> pd.DataFrame:
     return merged.reset_index(drop=True)
 
 
-def tide_height_trend(conn: sqlite3.Connection) -> pd.DataFrame:
+def tide_height_trend(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> pd.DataFrame:
     """Tide height over the same date range as the data, for placing next
     to the sightings-by-tide-state chart. Uses the tide_height_ft already
     stored per sighting (averaged per day) rather than a fresh NOAA call --
     keeps this function fast and dependency-free for the dashboard route;
     ingestion/tide.py's live predictions are what populated these values
-    in the first place."""
-    rows = query_sightings_with_context(conn, require_tide=True)
+    in the first place.
+
+    A species filter here changes which DAYS are represented (only days
+    with a sighting of the selected species), not the tide physics itself
+    -- tide height doesn't depend on species. Documented rather than
+    silently applied, since that's a subtler effect than a normal filter.
+    """
+    rows = query_sightings_with_context(conn, start_date=start_date, end_date=end_date, species=species, require_tide=True)
     if not rows:
         return pd.DataFrame(columns=["date", "tide_height_ft"])
 

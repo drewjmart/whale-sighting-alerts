@@ -92,6 +92,59 @@
     @media (max-width: 720px) {
       .chart-pair { grid-template-columns: 1fr; }
     }
+
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 1rem;
+      background: var(--surface);
+      border: 1px solid var(--gridline);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .filter-bar label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      font-size: 0.8rem;
+      color: var(--ink-2);
+      font-weight: 600;
+    }
+    .filter-bar input, .filter-bar select {
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 0.3rem 0.5rem;
+      border: 1px solid var(--gridline);
+      border-radius: 5px;
+      background: var(--page);
+      color: var(--ink);
+    }
+    .filter-bar button {
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      border: none;
+      border-radius: 5px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      height: fit-content;
+    }
+    .filter-bar button:hover { opacity: 0.9; }
+    .clear-filters {
+      font-size: 0.8rem;
+      align-self: center;
+      color: var(--ink-2);
+      text-decoration: underline;
+    }
+    .filter-note {
+      font-size: 0.78rem;
+      color: var(--ink-muted);
+      margin: 0.4rem 0 1.25rem;
+    }
   </style>
 </head>
 <body>

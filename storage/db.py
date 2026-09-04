@@ -150,7 +150,7 @@ def query_sightings_with_context(
     *,
     start_date: str | None = None,
     end_date: str | None = None,
-    species: str | None = None,
+    species: str | list[str] | None = None,
     require_tide: bool = False,
     require_chinook: bool = False,
 ) -> list[sqlite3.Row]:
@@ -161,6 +161,10 @@ def query_sightings_with_context(
     analysis/viz/dashboard could see the tide/CPUE/moon-phase data that
     was already being computed and stored on every ingestion run. This is
     the function analysis/correlations.py's tide and CPUE charts use.
+
+    `species` accepts a single value or a list (2026-09-05 addition, for
+    the /analysis page's multi-select filter) -- a list of one still
+    works the same as a bare string.
     """
     clauses = []
     params: dict[str, Any] = {}
@@ -172,8 +176,10 @@ def query_sightings_with_context(
         clauses.append("s.sighting_date <= :end_date")
         params["end_date"] = end_date
     if species:
-        clauses.append("s.species = :species")
-        params["species"] = species
+        species_list = [species] if isinstance(species, str) else list(species)
+        placeholders = ", ".join(f":species_{i}" for i in range(len(species_list)))
+        clauses.append(f"s.species IN ({placeholders})")
+        params.update({f"species_{i}": s for i, s in enumerate(species_list)})
     if require_tide:
         clauses.append("ec.tide_state IS NOT NULL")
     if require_chinook:

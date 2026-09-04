@@ -32,11 +32,17 @@ _TIDE_STATE_COLOR = {"flood": "#2a78d6", "ebb": "#eb6834", "slack": INK_MUTED}
 _TIDE_STATE_ORDER = ["flood", "ebb", "slack"]
 
 
-def tide_state_chart(conn: sqlite3.Connection) -> go.Figure:
+def tide_state_chart(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> go.Figure:
     """Sightings per hour of exposure to each tide state -- rate, not raw
     count (see analysis/correlations.py's docstring for why raw counts
     would be misleading here)."""
-    result = sightings_by_tide_state(conn)
+    result = sightings_by_tide_state(conn, start_date=start_date, end_date=end_date, species=species)
     fig = go.Figure()
 
     if not result["counts"]:
@@ -67,13 +73,19 @@ def tide_state_chart(conn: sqlite3.Connection) -> go.Figure:
     return fig
 
 
-def tide_height_chart(conn: sqlite3.Connection) -> go.Figure:
+def tide_height_chart(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> go.Figure:
     """Tide height over the season -- positioned near tide_state_chart() on
     the dashboard so the two are easy to compare visually, kept as two
     separate single-axis charts rather than one dual-axis chart (a
     dual-axis chart makes two different scales look artificially
     comparable)."""
-    df = tide_height_trend(conn)
+    df = tide_height_trend(conn, start_date=start_date, end_date=end_date, species=species)
     fig = go.Figure()
 
     if df.empty:
@@ -95,7 +107,13 @@ def tide_height_chart(conn: sqlite3.Connection) -> go.Figure:
     return fig
 
 
-def chinook_cpue_chart(conn: sqlite3.Connection) -> go.Figure:
+def chinook_cpue_chart(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> go.Figure:
     """Chinook CPUE (Bonneville daily passage count, used as the proxy)
     over the season, alongside daily orca sighting counts -- so it's
     visually clear whether sighting frequency tracks salmon abundance.
@@ -108,9 +126,21 @@ def chinook_cpue_chart(conn: sqlite3.Connection) -> go.Figure:
     instead normalized to % of their own max and share one axis; raw
     values are still available on hover. No correlation coefficient is
     computed -- this is a visual comparison only, per the ask.
+
+    `species` is accepted for interface consistency with the other
+    /analysis charts (so the page's filter form can call every chart the
+    same way) but has no effect -- this chart is always orca vs. CPUE.
+    A note says so explicitly rather than silently ignoring a filter the
+    viewer just set, which would look like a bug.
     """
-    df = chinook_cpue_vs_orca_sightings(conn)
+    df = chinook_cpue_vs_orca_sightings(conn, start_date=start_date, end_date=end_date)
     fig = go.Figure()
+    species_filter_note = (
+        " Note: this chart is always orca-only regardless of the species filter above -- "
+        "CPUE has no meaning for other species."
+        if species and species != ["orca"]
+        else ""
+    )
 
     if df.empty:
         fig.update_layout(
@@ -142,7 +172,7 @@ def chinook_cpue_chart(conn: sqlite3.Connection) -> go.Figure:
             "Chinook CPUE vs. orca sightings, over the season "
             "<br><sup>Both normalized to % of their own max (not raw units) so they share one axis -- "
             "hover for real values. Bonneville Dam daily passage count used as the CPUE proxy; "
-            "orca-relevant only, per the feature hierarchy.</sup>"
+            f"orca-relevant only, per the feature hierarchy.{species_filter_note}</sup>"
         ),
         xaxis_title="Date", yaxis_title="% of season max",
         legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor="rgba(252,252,251,0.8)"),
@@ -153,13 +183,19 @@ def chinook_cpue_chart(conn: sqlite3.Connection) -> go.Figure:
     return fig
 
 
-def seasonal_chart(conn: sqlite3.Connection) -> go.Figure:
+def seasonal_chart(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> go.Figure:
     """Cross-year seasonal pattern -- does sighting timing repeat year to
     year? A single season of data cannot show that; the chart says so
     directly in its title, computed live from the database (see
     data_span_summary), not hardcoded -- it stops saying "preliminary"
     on its own once a second year of data exists."""
-    pivot, span = sightings_by_season_and_year(conn)
+    pivot, span = sightings_by_season_and_year(conn, start_date=start_date, end_date=end_date, species=species)
     fig = go.Figure()
 
     if pivot.empty:

@@ -21,6 +21,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analysis.location_query import known_regions, query_region
 from analysis.pivots import location_by_species, pod_by_month, species_by_month
+from normalization.pod_resolver import VALID_SPECIES
 from storage.db import DEFAULT_DB_PATH, get_connection
 from viz.correlations import chinook_cpue_chart, seasonal_chart, tide_height_chart, tide_state_chart
 from viz.map import build_map
@@ -83,23 +84,41 @@ def pivots_view():
 def analysis_view():
     """Correlation views -- does sighting frequency actually vary with tide
     state, season, or (orca) salmon abundance. Deliberately separate from
-    /map (spatial/species only, per the original design principle)."""
+    /map (spatial/species only, per the original design principle).
+
+    Filters (date range + species multi-select, 2026-09-05) are read from
+    query params and passed to every chart -- GET params rather than a JS
+    form submit, so the filtered view is a shareable/bookmarkable URL and
+    works with no JS at all, same pattern as /map's ?region=&start_date=.
+    """
+    start_date = request.args.get("start_date") or None
+    end_date = request.args.get("end_date") or None
+    species = request.args.getlist("species") or None
+
     conn = _conn()
     try:
         charts = [
-            ("Sightings by tide state", tide_state_chart(conn)),
-            ("Tide height over the season", tide_height_chart(conn)),
-            ("Chinook CPUE over the season (orca-relevant only)", chinook_cpue_chart(conn)),
-            ("Sightings by season, by year", seasonal_chart(conn)),
+            tide_state_chart(conn, start_date=start_date, end_date=end_date, species=species),
+            tide_height_chart(conn, start_date=start_date, end_date=end_date, species=species),
+            chinook_cpue_chart(conn, start_date=start_date, end_date=end_date, species=species),
+            seasonal_chart(conn, start_date=start_date, end_date=end_date, species=species),
         ]
     finally:
         conn.close()
 
-    chart_html = []
-    for i, (_title, fig) in enumerate(charts):
-        chart_html.append(fig.to_html(full_html=False, include_plotlyjs=("cdn" if i == 0 else False)))
+    chart_html = [
+        fig.to_html(full_html=False, include_plotlyjs=("cdn" if i == 0 else False))
+        for i, fig in enumerate(charts)
+    ]
 
-    return render_template("analysis.html", chart_html=chart_html)
+    return render_template(
+        "analysis.html",
+        chart_html=chart_html,
+        all_species=sorted(VALID_SPECIES),
+        selected_species=species or [],
+        start_date=start_date or "",
+        end_date=end_date or "",
+    )
 
 
 @app.route("/region/<region_name>")

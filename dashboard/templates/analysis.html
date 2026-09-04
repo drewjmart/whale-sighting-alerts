@@ -7,6 +7,33 @@
     not just raw counts. Kept separate from the map, which stays purely spatial.
   </p>
 
+  <form class="filter-bar" method="get" action="/analysis">
+    <label>
+      From
+      <input type="date" name="start_date" value="{{ start_date }}">
+    </label>
+    <label>
+      To
+      <input type="date" name="end_date" value="{{ end_date }}">
+    </label>
+    <label>
+      Species
+      <select name="species" multiple size="3">
+        {% for s in all_species %}
+          <option value="{{ s }}" {% if s in selected_species %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button type="submit">Apply</button>
+    {% if start_date or end_date or selected_species %}
+      <a class="clear-filters" href="/analysis">Clear filters</a>
+    {% endif %}
+  </form>
+  <p class="filter-note">
+    Species filter doesn't change the Chinook CPUE chart — that comparison is always orca-only
+    (see its own note). Ctrl/Cmd-click to select multiple species.
+  </p>
+
   <div class="chart-pair">
     <div class="chart-card">{{ chart_html[0] | safe }}</div>
     <div class="chart-card">{{ chart_html[1] | safe }}</div>
