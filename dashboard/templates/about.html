@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}About — Whale Sighting Tracker{% endblock %}
+{% block content %}
+  <h1>About this dashboard</h1>
+  <p class="lede">
+    A quick guide if this is your first time here — what it shows, where the numbers
+    come from, and how to use the filters.
+  </p>
+
+  <h2>What this is</h2>
+  <p>
+    This project started as a live alert — a small script that watches a handful of
+    public sources for new whale sighting reports around West Seattle and sends an
+    email or Discord message the moment one shows up, so there's time to grab a
+    camera and get to a viewpoint. This dashboard is the second half of that project:
+    instead of just reacting to the newest sighting, it keeps every sighting it's
+    ever seen and lets you look for patterns across an entire season — which
+    species and orca pods show up where, whether timing repeats, and whether
+    conditions like tide or salmon runs line up with when whales actually appear.
+  </p>
+  <p>
+    It currently covers <strong>orca, humpback, and gray whale</strong> sightings
+    (plus porpoise and dolphin, less commonly), reported anywhere in Washington's
+    inland waters — not just West Seattle.
+  </p>
+
+  <h2>Where the data comes from</h2>
+  <p>
+    Sightings are pulled from <a href="https://acartia.io" target="_blank" rel="noopener">Acartia</a>,
+    a public data cooperative for the Salish Sea that aggregates reports from
+    observers, ferries, and partner organizations. Tide data comes from
+    <a href="https://tidesandcurrents.noaa.gov/" target="_blank" rel="noopener">NOAA CO-OPS</a>,
+    and salmon abundance (used only for orca, see below) comes from Bonneville Dam's
+    daily fish-passage counts. Full credits, including everyone Acartia itself
+    credits as a founding contributor, are in the
+    <a href="https://github.com/drewjmart/whale-sighting-alerts/blob/main/readme.md#data-sources" target="_blank" rel="noopener">
+      project README's Data Sources section</a> — that's the canonical list if you
+    want the details or need to cite something.
+  </p>
+  <p>
+    A quick honesty note: this dashboard currently holds a single season of data
+    (spring through early fall 2026). Anything here that would need multiple years
+    to really prove — like whether sightings repeat in the same months every
+    year — says so directly on the chart rather than presenting one season's shape
+    as an established pattern.
+  </p>
+
+  <h2>What each page shows</h2>
+  <ul>
+    <li>
+      <strong><a href="/">Home</a></strong> — a live count of sightings in the last
+      24 hours, broken out by species and nearest known location, plus running
+      totals by species and a list of named regions you can browse.
+    </li>
+    <li>
+      <strong><a href="/map">Map</a></strong> — every sighting plotted where it
+      happened, color-coded by species; orca sightings are further colored by pod
+      (J/K/L/Bigg's-Transient) where that's known. Purely spatial — no charts or
+      correlations live here on purpose, so it stays easy to read.
+    </li>
+    <li>
+      <strong><a href="/analysis">Analysis</a></strong> — four charts that go
+      beyond raw counts (see below), with a date-range and species filter that
+      applies to all of them at once.
+    </li>
+    <li>
+      <strong><a href="/pivots">Pivot tables</a></strong> — the same underlying
+      counts as the charts, laid out as plain tables (pod × month, species ×
+      month, location × species) if you want the raw numbers.
+    </li>
+  </ul>
+
+  <h2>What the Analysis charts mean</h2>
+  <ul>
+    <li>
+      <strong>Sightings by tide state</strong> — whether sightings happen more
+      often during a rising tide (flood), falling tide (ebb), or the short window
+      around high/low tide (slack). Shown as a <em>rate</em> (sightings per hour),
+      not a raw count — a raw count would make slack tide look artificially rare,
+      since it's a much narrower time window by definition.
+    </li>
+    <li>
+      <strong>Tide height over the season</strong> — the actual tide curve for the
+      period shown, placed next to the chart above so you can eyeball how the two
+      relate.
+    </li>
+    <li>
+      <strong>Chinook CPUE vs. orca sightings</strong> — daily salmon counts at
+      Bonneville Dam next to daily orca sighting counts, both scaled to a 0–100
+      range so they fit on one chart (their real units are wildly different sizes).
+      This only applies to orca — humpback and gray whales don't eat salmon, so
+      there's nothing to compare there.
+    </li>
+    <li>
+      <strong>Sightings by season, by year</strong> — sightings grouped into
+      winter/spring/summer/fall, with each year as its own bar. With only one
+      season of data so far, this can't yet show a real year-over-year pattern,
+      and the chart says so.
+    </li>
+  </ul>
+
+  <h2>Using the filters</h2>
+  <p>
+    The Analysis page has a date range (From/To) and a species selector above the
+    charts. Pick a range, Ctrl/Cmd-click to select one or more species, and click
+    Apply — all four charts update together. The Chinook chart is the one
+    exception: it's always orca-only no matter what you select there, since salmon
+    abundance has no meaning for the other species. "Clear filters" resets back to
+    the full dataset.
+  </p>
+{% endblock %}

@@ -124,6 +124,14 @@ def analysis_view():
     )
 
 
+@app.route("/about")
+def about_view():
+    """Static explainer page -- what this shows, where the data comes
+    from, what each chart means, how to use the filters. No query, no
+    conn needed."""
+    return render_template("about.html")
+
+
 @app.route("/region/<region_name>")
 def region_view(region_name: str):
     conn = _conn()
