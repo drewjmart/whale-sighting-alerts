@@ -14,40 +14,83 @@ import sqlite3
 from pathlib import Path
 
 import folium
+from folium import MacroElement
+from jinja2 import Template
 
 from analysis.location_query import query_point, query_region
 from storage.db import query_sightings
-
-SPECIES_COLORS = {
-    "orca": "red",  # overridden per-pod below when species == orca
-    "humpback": "teal",
-    "gray_whale": "gray",
-    "porpoise": "pink",
-    "dolphin": "lightblue",
-    "unknown": "black",
-}
-
-POD_COLORS = {
-    "J": "blue",
-    "K": "green",
-    "L": "purple",
-    "BIGGS_TRANSIENT": "orange",
-    "SRKW_UNSPECIFIED": "darkred",
-    "UNKNOWN": "lightgray",
-}
+from viz.colors import INK_PRIMARY, INK_SECONDARY, POD_COLORS, SPECIES_COLORS, color_for_species_or_pod
 
 DEFAULT_CENTER = (47.7, -122.6)  # roughly central Puget Sound / Salish Sea
 DEFAULT_ZOOM = 9
 
+# Legend rows, in a fixed, meaningful order -- most-tracked orca pods first
+# (the categories this project's users actually care most about), then
+# non-orca species. Matches viz/colors.py exactly; this list IS the legend.
+_LEGEND_POD_ROWS = [
+    ("J", "Orca -- J pod"),
+    ("K", "Orca -- K pod"),
+    ("L", "Orca -- L pod"),
+    ("BIGGS_TRANSIENT", "Orca -- Bigg's/Transient"),
+    ("SRKW_UNSPECIFIED", "Orca -- Southern Resident, pod unconfirmed"),
+    ("UNKNOWN", "Orca -- pod unresolved"),
+]
+_LEGEND_SPECIES_ROWS = [
+    ("humpback", "Humpback"),
+    ("gray_whale", "Gray whale"),
+    ("porpoise", "Porpoise"),
+    ("unknown", "Unidentified species"),
+]
+
+
+class _MapLegend(MacroElement):
+    """A fixed-position HTML legend overlay -- without this, the map's
+    colors are unguessable (that was the actual complaint: 'no way to
+    interpret the map without guessing'). Colors pulled from viz/colors.py
+    so this can never drift from what the markers themselves use."""
+
+    _template = Template(
+        """
+        {% macro html(this, kwargs) %}
+        <div style="
+            position: fixed; bottom: 20px; left: 20px; z-index: 9999;
+            background: #fcfcfbee; border: 1px solid #e1e0d9; border-radius: 8px;
+            padding: 12px 14px; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+            font-size: 12px; color: {{ this.ink_primary }}; box-shadow: 0 2px 8px rgba(11,11,11,0.12);
+            max-width: 210px; line-height: 1.5;">
+          <div style="font-weight: 600; margin-bottom: 6px;">Orca, by pod</div>
+          {% for code, label in this.pod_rows %}
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%;
+                         background:{{ this.pod_colors[code] }}; flex-shrink:0;"></span>
+            <span style="color:{{ this.ink_secondary }};">{{ label }}</span>
+          </div>
+          {% endfor %}
+          <div style="font-weight: 600; margin: 8px 0 6px;">Species</div>
+          {% for code, label in this.species_rows %}
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:2px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%;
+                         background:{{ this.species_colors[code] }}; flex-shrink:0;"></span>
+            <span style="color:{{ this.ink_secondary }};">{{ label }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endmacro %}
+        """
+    )
+
+    def __init__(self):
+        super().__init__()
+        self.pod_rows = _LEGEND_POD_ROWS
+        self.species_rows = _LEGEND_SPECIES_ROWS
+        self.pod_colors = POD_COLORS
+        self.species_colors = SPECIES_COLORS
+        self.ink_primary = INK_PRIMARY
+        self.ink_secondary = INK_SECONDARY
+
 
 def _marker_color(row: sqlite3.Row) -> str:
-    if row["species"] == "orca" and row["pod_code"]:
-        # Multi-pod records ("J,L") get colored by the first pod in the
-        # stable order -- a marker can only have one color; the popup text
-        # still shows the full pod_code string.
-        first_pod = row["pod_code"].split(",")[0]
-        return POD_COLORS.get(first_pod, POD_COLORS["UNKNOWN"])
-    return SPECIES_COLORS.get(row["species"], SPECIES_COLORS["unknown"])
+    return color_for_species_or_pod(row["species"], row["pod_code"])
 
 
 def _popup_html(row: sqlite3.Row) -> str:
@@ -106,6 +149,8 @@ def build_map(
             fill_opacity=0.8,
             popup=folium.Popup(_popup_html(row), max_width=250),
         ).add_to(fmap)
+
+    fmap.get_root().add_child(_MapLegend())
 
     return fmap
 
