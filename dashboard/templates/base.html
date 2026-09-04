@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Whale Sighting Tracker{% endblock %}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; background: #ffffff; }
+    nav a { margin-right: 1rem; }
+    table.pivot-table { border-collapse: collapse; margin: 1rem 0; }
+    table.pivot-table th, table.pivot-table td { border: 1px solid #ddd; padding: 4px 10px; text-align: right; }
+    table.pivot-table th { background: #f4f4f4; }
+    h1, h2 { color: #1a3a5c; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/map">Map</a>
+    <a href="/pivots">Pivot tables</a>
+  </nav>
+  <hr>
+  {% block content %}{% endblock %}
+</body>
+</html>

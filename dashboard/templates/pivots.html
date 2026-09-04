@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Pivot tables — Whale Sighting Tracker{% endblock %}
+{% block content %}
+  <h1>Pivot tables</h1>
+  {% for title, table_html in tables.items() %}
+    <h2>{{ title }}</h2>
+    {{ table_html | safe }}
+  {% endfor %}
+{% endblock %}

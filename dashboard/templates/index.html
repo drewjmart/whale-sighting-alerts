@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Whale Sighting Tracker{% endblock %}
+{% block content %}
+  <h1>🐋 Whale Sighting Tracker</h1>
+  <p>Historical trend and migration tracking across orca, humpback, and gray whale sightings.</p>
+
+  <h2>Sightings by species</h2>
+  {% if species_counts %}
+    <ul>
+      {% for species, count in species_counts.items() %}
+        <li><strong>{{ species }}</strong>: {{ count }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>No data ingested yet.</p>
+  {% endif %}
+
+  <h2>Browse a region</h2>
+  <ul>
+    {% for region in regions %}
+      <li><a href="/region/{{ region }}">{{ region }}</a></li>
+    {% endfor %}
+  </ul>
+{% endblock %}

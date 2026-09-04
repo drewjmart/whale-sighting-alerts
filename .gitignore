@@ -5,3 +5,10 @@ whale_alert.log.bak
 __pycache__/
 *.pyc
 .venv/
+
+# Historical trends feature -- regenerable, not source
+whale_sightings.sqlite3
+map.html
+trends_species.html
+trends_pod.html
+.pytest_cache/
