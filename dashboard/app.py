@@ -22,6 +22,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 from analysis.location_query import known_regions, query_region
 from analysis.pivots import location_by_species, pod_by_month, species_by_month
 from storage.db import DEFAULT_DB_PATH, get_connection
+from viz.correlations import chinook_cpue_chart, seasonal_chart, tide_height_chart, tide_state_chart
 from viz.map import build_map
 
 app = Flask(__name__)
@@ -76,6 +77,29 @@ def pivots_view():
         for title, df in tables.items()
     }
     return render_template("pivots.html", tables=html_tables)
+
+
+@app.route("/analysis")
+def analysis_view():
+    """Correlation views -- does sighting frequency actually vary with tide
+    state, season, or (orca) salmon abundance. Deliberately separate from
+    /map (spatial/species only, per the original design principle)."""
+    conn = _conn()
+    try:
+        charts = [
+            ("Sightings by tide state", tide_state_chart(conn)),
+            ("Tide height over the season", tide_height_chart(conn)),
+            ("Chinook CPUE over the season (orca-relevant only)", chinook_cpue_chart(conn)),
+            ("Sightings by season, by year", seasonal_chart(conn)),
+        ]
+    finally:
+        conn.close()
+
+    chart_html = []
+    for i, (_title, fig) in enumerate(charts):
+        chart_html.append(fig.to_html(full_html=False, include_plotlyjs=("cdn" if i == 0 else False)))
+
+    return render_template("analysis.html", chart_html=chart_html)
 
 
 @app.route("/region/<region_name>")

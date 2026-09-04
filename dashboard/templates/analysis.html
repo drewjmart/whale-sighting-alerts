@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Analysis — Whale Sighting Tracker{% endblock %}
+{% block content %}
+  <h1>Correlation analysis</h1>
+  <p class="lede">
+    Does sighting frequency actually vary with tide, season, or (for orca) salmon abundance —
+    not just raw counts. Kept separate from the map, which stays purely spatial.
+  </p>
+
+  <div class="chart-pair">
+    <div class="chart-card">{{ chart_html[0] | safe }}</div>
+    <div class="chart-card">{{ chart_html[1] | safe }}</div>
+  </div>
+
+  <div class="chart-card chart-full">{{ chart_html[2] | safe }}</div>
+  <div class="chart-card chart-full">{{ chart_html[3] | safe }}</div>
+{% endblock %}
