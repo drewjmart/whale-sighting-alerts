@@ -15,6 +15,7 @@ from pathlib import Path
 
 import folium
 from folium import MacroElement
+from folium.plugins import MarkerCluster
 from jinja2 import Template
 
 from analysis.location_query import query_point, query_region
@@ -138,6 +139,16 @@ def build_map(
 
     fmap = folium.Map(location=center, zoom_start=zoom, tiles="OpenStreetMap")
 
+    # Marker clustering (2026-09-08): the actual complaint was that the map
+    # is unreadable, not just that it lacks filters -- with 1000s of points
+    # in a small area (e.g. Admiralty Inlet in-season) markers overlap into
+    # an unreadable smear regardless of what's filtered out. MarkerCluster
+    # collapses nearby points into numbered clusters that split apart as you
+    # zoom in; it clusters on getLatLng() so CircleMarker instances work
+    # here same as folium.Marker would, and per-marker color/popup are
+    # unaffected -- only the grouping behavior changes.
+    cluster = MarkerCluster(name="Sightings").add_to(fmap)
+
     for row in rows:
         if row["latitude"] is None or row["longitude"] is None:
             continue
@@ -148,7 +159,7 @@ def build_map(
             fill=True,
             fill_opacity=0.8,
             popup=folium.Popup(_popup_html(row), max_width=250),
-        ).add_to(fmap)
+        ).add_to(cluster)
 
     fmap.get_root().add_child(_MapLegend())
 
