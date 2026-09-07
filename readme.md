@@ -41,6 +41,37 @@ fishery (DFO) and Bonneville Dam. Tide data from NOAA CO-OPS.
 
 See [PR #1](../../pull/1) for full implementation details.
 
+### Salmon/Tide Correlation, Analysis Filters, and About Page (Added September 2026)
+Extended the historical trends dashboard with direct correlation visualization,
+interactive filtering, an at-a-glance activity summary, and documentation for
+first-time users.
+
+- Fixed a real gap from the previous release: tide and moon-phase data was
+  being stored but never read anywhere, and Chinook CPUE was never populated
+  at all (hardcoded to `None` despite a working, unused data client)
+- Added an `/analysis` page: tide-state rate chart, tide-height trend, CPUE
+  trend, and a cross-year seasonal chart
+- Added a correlation overlay plotting whale sighting counts alongside
+  Chinook CPUE on the same time axis, for direct visual comparison
+- Added date range and species/whale-type filters across all analysis charts
+- Added a 24-hour activity summary on the main dashboard page
+- Added an About page explaining data provenance, chart meanings, and how
+  to use the dashboard
+- Fixed a map legend rendering bug and unified the color palette across
+  the map, legend, and all charts
+
+**Worth noting:** initial tide-state analysis showed what looked like a
+strong ~2.7x effect on raw sighting counts, but this turned out to be a
+sampling-window artifact — slack tide is a much shorter observation window
+than flood/ebb by definition. Corrected to a real rate-based comparison,
+which shows a milder ~15% spread; the chart itself notes this is
+observational, not causal. The seasonal cross-year view is labeled
+preliminary since the dataset currently covers only one season
+(March–September 2026); this label is computed live from the data and
+will update automatically as more seasons accumulate.
+
+See [PR #2](https://github.com/drewjmart/whale-sighting-alerts/pull/2) for full implementation details.
+
 ## Sources
 
 The monitor currently aggregates from two RSS feeds:
