@@ -54,4 +54,12 @@
   <div class="map-frame-card">
     <iframe src="/map/frame?{{ frame_query }}" class="map-frame" title="Sighting map"></iframe>
   </div>
+
+  <h2>Browse a region</h2>
+  <p class="filter-note">A plain table of sightings for one named place, if you'd rather not use the map.</p>
+  <ul>
+    {% for region in regions %}
+      <li><a href="/region/{{ region }}">{{ region }}</a></li>
+    {% endfor %}
+  </ul>
 {% endblock %}

@@ -77,12 +77,12 @@ def toggle_theme():
 
 @app.route("/")
 def index():
+    """Deliberately minimal (2026-09-08): just the 24h summary and the KPI
+    panes -- the full species/location breakdowns and region browsing that
+    used to live here moved to their own dedicated pages (/pivots and
+    /map respectively) rather than duplicating them in two places."""
     conn = _conn()
     try:
-        species_counts = {
-            species: int(row.sum())
-            for species, row in species_by_month(conn).iterrows()
-        }
         recent = recent_24h_summary(conn)
         kpis = dict(
             season=season_total_with_change(conn),
@@ -92,9 +92,7 @@ def index():
         )
     finally:
         conn.close()
-    return render_template(
-        "index.html", species_counts=species_counts, regions=known_regions(), recent=recent, kpis=kpis
-    )
+    return render_template("index.html", recent=recent, kpis=kpis)
 
 
 def _map_filters_from_request() -> dict:
@@ -144,6 +142,7 @@ def map_view():
         start_date=filters["start_date"] or "",
         end_date=filters["end_date"] or "",
         trust=filters["trust"],
+        regions=known_regions(),
     )
 
 
@@ -174,9 +173,11 @@ def map_frame():
 def pivots_view():
     conn = _conn()
     try:
+        species_month = species_by_month(conn)
+        species_counts = {species: int(row.sum()) for species, row in species_month.iterrows()}
         tables = {
             "Orca sightings by pod x month": pod_by_month(conn),
-            "Sightings by species x month": species_by_month(conn),
+            "Sightings by species x month": species_month,
             "Sightings by location x species": location_by_species(conn),
         }
     finally:
@@ -185,7 +186,7 @@ def pivots_view():
         title: (df.to_html(classes="pivot-table") if not df.empty else "<p>No data yet.</p>")
         for title, df in tables.items()
     }
-    return render_template("pivots.html", tables=html_tables)
+    return render_template("pivots.html", tables=html_tables, species_counts=species_counts)
 
 
 @app.route("/analysis")

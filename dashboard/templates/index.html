@@ -71,21 +71,8 @@
     </div>
   </div>
 
-  <h2>Sightings by species</h2>
-  {% if species_counts %}
-    <ul>
-      {% for species, count in species_counts.items() %}
-        <li><strong>{{ species }}</strong>: {{ count }}</li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p>No data ingested yet.</p>
-  {% endif %}
-
-  <h2>Browse a region</h2>
-  <ul>
-    {% for region in regions %}
-      <li><a href="/region/{{ region }}">{{ region }}</a></li>
-    {% endfor %}
-  </ul>
+  <p class="filter-note">
+    Looking for species totals or the full location breakdown? See <a href="/pivots">Pivot tables</a>.
+    To browse or filter by region, see <a href="/map">Map</a>.
+  </p>
 {% endblock %}
