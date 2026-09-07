@@ -42,7 +42,8 @@ def query_region(
     *,
     start_date: str | None = None,
     end_date: str | None = None,
-    species: str | None = None,
+    species: str | list[str] | None = None,
+    trusted_only: bool = False,
 ) -> list[sqlite3.Row]:
     """Sightings within `radius_miles` of a named region (case-insensitive,
     must match normalization/location_geocoder.py's known-place table).
@@ -55,7 +56,10 @@ def query_region(
         )
     lat, lon = _LOCATIONS[key]
     bbox = _bbox_for_point(lat, lon, radius_miles)
-    return query_sightings(conn, start_date=start_date, end_date=end_date, species=species, bbox=bbox)
+    return query_sightings(
+        conn, start_date=start_date, end_date=end_date, species=species, bbox=bbox,
+        trusted_only=trusted_only,
+    )
 
 
 def query_point(
@@ -66,11 +70,15 @@ def query_point(
     *,
     start_date: str | None = None,
     end_date: str | None = None,
-    species: str | None = None,
+    species: str | list[str] | None = None,
+    trusted_only: bool = False,
 ) -> list[sqlite3.Row]:
     """Same as query_region() but for an arbitrary point, not a named place."""
     bbox = _bbox_for_point(lat, lon, radius_miles)
-    return query_sightings(conn, start_date=start_date, end_date=end_date, species=species, bbox=bbox)
+    return query_sightings(
+        conn, start_date=start_date, end_date=end_date, species=species, bbox=bbox,
+        trusted_only=trusted_only,
+    )
 
 
 if __name__ == "__main__":

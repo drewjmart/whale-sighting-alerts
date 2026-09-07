@@ -25,10 +25,13 @@ from viz.colors import INK_PRIMARY, INK_SECONDARY, POD_COLORS, SPECIES_COLORS, c
 DEFAULT_CENTER = (47.7, -122.6)  # roughly central Puget Sound / Salish Sea
 DEFAULT_ZOOM = 9
 
-# Legend rows, in a fixed, meaningful order -- most-tracked orca pods first
-# (the categories this project's users actually care most about), then
-# non-orca species. Matches viz/colors.py exactly; this list IS the legend.
-_LEGEND_POD_ROWS = [
+# Rows in a fixed, meaningful order -- most-tracked orca pods first (the
+# categories this project's users actually care most about), then non-orca
+# species. Matches viz/colors.py exactly; this list IS the legend, and is
+# also reused (2026-09-08) by dashboard/app.py to build the /map pod and
+# species filter checkboxes, so the legend and the filters can never list
+# different categories from each other.
+POD_ROWS = [
     ("J", "Orca -- J pod"),
     ("K", "Orca -- K pod"),
     ("L", "Orca -- L pod"),
@@ -36,7 +39,7 @@ _LEGEND_POD_ROWS = [
     ("SRKW_UNSPECIFIED", "Orca -- Southern Resident, pod unconfirmed"),
     ("UNKNOWN", "Orca -- pod unresolved"),
 ]
-_LEGEND_SPECIES_ROWS = [
+SPECIES_ROWS = [
     ("humpback", "Humpback"),
     ("gray_whale", "Gray whale"),
     ("porpoise", "Porpoise"),
@@ -82,8 +85,8 @@ class _MapLegend(MacroElement):
 
     def __init__(self):
         super().__init__()
-        self.pod_rows = _LEGEND_POD_ROWS
-        self.species_rows = _LEGEND_SPECIES_ROWS
+        self.pod_rows = POD_ROWS
+        self.species_rows = SPECIES_ROWS
         self.pod_colors = POD_COLORS
         self.species_colors = SPECIES_COLORS
         self.ink_primary = INK_PRIMARY
@@ -105,6 +108,14 @@ def _popup_html(row: sqlite3.Row) -> str:
     )
 
 
+def _pod_codes_of(row: sqlite3.Row) -> list[str]:
+    """A sighting's pod_code can be a comma-joined list ('J,L') when a
+    report mentions more than one pod -- split it out so filtering can
+    check membership rather than exact string equality."""
+    raw = row["pod_code"]
+    return [p.strip() for p in raw.split(",")] if raw else []
+
+
 def build_map(
     conn: sqlite3.Connection,
     *,
@@ -114,21 +125,42 @@ def build_map(
     lat: float | None = None,
     lon: float | None = None,
     radius_miles: float = 15.0,
-    species: str | None = None,
+    species: str | list[str] | None = None,
+    pod_codes: list[str] | None = None,
+    trusted_only: bool = False,
 ) -> folium.Map:
     """Build a folium map of matching sightings. Pass `region` (a known
     place name) OR `lat`/`lon` (an arbitrary point) to also filter by
-    location; omit both for all of WA waters within the date range."""
+    location; omit both for all of WA waters within the date range.
+
+    `pod_codes` (2026-09-08, for /map's pod-checkbox filter) narrows orca
+    sightings to the selected pod(s) only -- it's applied as a post-filter
+    here rather than in storage/db.py because pod_code can be a
+    comma-joined multi-pod string ("J,L"), which needs membership
+    matching, not a plain SQL equality/IN clause. It never affects
+    non-orca rows -- pod is meaningless for other species, same principle
+    as the Chinook CPUE chart staying orca-only regardless of the species
+    filter on /analysis."""
     if region:
         rows = query_region(
-            conn, region, radius_miles, start_date=start_date, end_date=end_date, species=species
+            conn, region, radius_miles, start_date=start_date, end_date=end_date,
+            species=species, trusted_only=trusted_only,
         )
     elif lat is not None and lon is not None:
         rows = query_point(
-            conn, lat, lon, radius_miles, start_date=start_date, end_date=end_date, species=species
+            conn, lat, lon, radius_miles, start_date=start_date, end_date=end_date,
+            species=species, trusted_only=trusted_only,
         )
     else:
-        rows = query_sightings(conn, start_date=start_date, end_date=end_date, species=species)
+        rows = query_sightings(
+            conn, start_date=start_date, end_date=end_date, species=species, trusted_only=trusted_only
+        )
+
+    if pod_codes:
+        rows = [
+            row for row in rows
+            if row["species"] != "orca" or any(p in pod_codes for p in _pod_codes_of(row))
+        ]
 
     center = DEFAULT_CENTER
     zoom = DEFAULT_ZOOM

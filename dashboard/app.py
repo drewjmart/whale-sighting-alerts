@@ -9,6 +9,7 @@ this PR -- see README §Phase 2 for the (separate, later) Render step.
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from flask import Flask, abort, render_template, request
@@ -24,7 +25,7 @@ from analysis.pivots import location_by_species, pod_by_month, recent_24h_summar
 from normalization.pod_resolver import VALID_SPECIES
 from storage.db import DEFAULT_DB_PATH, get_connection
 from viz.correlations import chinook_cpue_chart, seasonal_chart, tide_height_chart, tide_state_chart
-from viz.map import build_map
+from viz.map import POD_ROWS, build_map
 
 app = Flask(__name__)
 
@@ -51,15 +52,73 @@ def index():
     )
 
 
+def _map_filters_from_request() -> dict:
+    return dict(
+        start_date=request.args.get("start_date") or None,
+        end_date=request.args.get("end_date") or None,
+        region=request.args.get("region") or None,
+        species=request.args.getlist("species") or None,
+        pod=request.args.getlist("pod") or None,
+        trust=request.args.get("trust") or "all",
+    )
+
+
 @app.route("/map")
 def map_view():
-    region = request.args.get("region") or None
-    start_date = request.args.get("start_date") or None
-    end_date = request.args.get("end_date") or None
+    """Filter UI (species/pod checkboxes, date range, trust-level toggle --
+    2026-09-08) plus the actual map, which lives in an iframe pointing at
+    /map/frame. It's an iframe rather than an inlined fragment because
+    folium renders a full standalone <html> document (its own <head> with
+    the Leaflet script/CSS tags) -- unlike plotly's to_html(full_html=False)
+    fragments on /analysis, that can't be safely embedded inside another
+    page's own <html>. Same GET-params-in-the-URL pattern as /analysis:
+    shareable/bookmarkable, no JS required to apply a filter."""
+    filters = _map_filters_from_request()
+
+    frame_params: dict = {}
+    if filters["start_date"]:
+        frame_params["start_date"] = filters["start_date"]
+    if filters["end_date"]:
+        frame_params["end_date"] = filters["end_date"]
+    if filters["region"]:
+        frame_params["region"] = filters["region"]
+    if filters["species"]:
+        frame_params["species"] = filters["species"]
+    if filters["pod"]:
+        frame_params["pod"] = filters["pod"]
+    if filters["trust"] != "all":
+        frame_params["trust"] = filters["trust"]
+
+    return render_template(
+        "map.html",
+        frame_query=urlencode(frame_params, doseq=True),
+        all_species=sorted(VALID_SPECIES),
+        selected_species=filters["species"] or [],
+        pod_rows=POD_ROWS,
+        selected_pods=filters["pod"] or [],
+        start_date=filters["start_date"] or "",
+        end_date=filters["end_date"] or "",
+        trust=filters["trust"],
+    )
+
+
+@app.route("/map/frame")
+def map_frame():
+    """The actual folium document -- embedded via iframe by /map, not
+    linked to directly (no filter UI or page chrome here on its own)."""
+    filters = _map_filters_from_request()
 
     conn = _conn()
     try:
-        fmap = build_map(conn, start_date=start_date, end_date=end_date, region=region)
+        fmap = build_map(
+            conn,
+            start_date=filters["start_date"],
+            end_date=filters["end_date"],
+            region=filters["region"],
+            species=filters["species"],
+            pod_codes=filters["pod"],
+            trusted_only=filters["trust"] == "trusted",
+        )
     finally:
         conn.close()
     return fmap.get_root().render()
