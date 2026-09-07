@@ -21,7 +21,16 @@ from flask import Flask, abort, redirect, render_template, request
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analysis.location_query import known_regions, query_region
-from analysis.pivots import location_by_species, pod_by_month, recent_24h_summary, species_by_month
+from analysis.pivots import (
+    days_since_last_sighting,
+    location_by_species,
+    most_active_location,
+    orca_pod_resolution_rate,
+    pod_by_month,
+    recent_24h_summary,
+    season_total_with_change,
+    species_by_month,
+)
 from normalization.pod_resolver import VALID_SPECIES
 from storage.db import DEFAULT_DB_PATH, get_connection
 from viz.correlations import chinook_cpue_chart, seasonal_chart, tide_height_chart, tide_state_chart
@@ -75,10 +84,16 @@ def index():
             for species, row in species_by_month(conn).iterrows()
         }
         recent = recent_24h_summary(conn)
+        kpis = dict(
+            season=season_total_with_change(conn),
+            active_location=most_active_location(conn),
+            days_since=days_since_last_sighting(conn),
+            pod_resolution=orca_pod_resolution_rate(conn),
+        )
     finally:
         conn.close()
     return render_template(
-        "index.html", species_counts=species_counts, regions=known_regions(), recent=recent
+        "index.html", species_counts=species_counts, regions=known_regions(), recent=recent, kpis=kpis
     )
 
 

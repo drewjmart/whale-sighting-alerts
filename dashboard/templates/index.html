@@ -21,6 +21,56 @@
     {% endif %}
   </div>
 
+  <div class="kpi-grid">
+    <div class="kpi-tile">
+      <p class="kpi-label">Sightings this {{ kpis.season.season }}</p>
+      <p class="kpi-value">{{ kpis.season.season_total }}</p>
+      {% if kpis.season.change_pct is none %}
+        <p class="kpi-detail">No sightings in the prior week to compare against.</p>
+      {% else %}
+        <p class="kpi-detail">
+          {{ "▲" if kpis.season.change_pct > 0 else ("▼" if kpis.season.change_pct < 0 else "―") }}
+          {{ kpis.season.change_pct | abs }}% week-over-week
+          ({{ kpis.season.current_week_count }} vs. {{ kpis.season.prior_week_count }} sightings)
+        </p>
+      {% endif %}
+    </div>
+
+    <div class="kpi-tile">
+      <p class="kpi-label">Most active location (last 24h)</p>
+      {% if kpis.active_location.location %}
+        <p class="kpi-value">{{ kpis.active_location.location }}</p>
+        <p class="kpi-detail">{{ kpis.active_location.count }} sighting{{ 's' if kpis.active_location.count != 1 }}</p>
+      {% else %}
+        <p class="kpi-value">—</p>
+        <p class="kpi-detail">No sightings in the last 24 hours.</p>
+      {% endif %}
+    </div>
+
+    <div class="kpi-tile">
+      <p class="kpi-label">Days since last sighting</p>
+      <ul class="kpi-species-list">
+        {% for species, days in kpis.days_since.items() %}
+          <li><span>{{ species }}</span> <strong>{{ days if days is not none else "never" }}</strong></li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="kpi-tile">
+      <p class="kpi-label">Orca pod resolution rate</p>
+      {% if kpis.pod_resolution.total > 0 %}
+        <p class="kpi-value">{{ kpis.pod_resolution.resolution_rate_pct }}%</p>
+        <p class="kpi-detail">
+          {{ kpis.pod_resolution.resolved }} identified, {{ kpis.pod_resolution.unresolved }} unresolved,
+          of {{ kpis.pod_resolution.total }} orca sightings
+        </p>
+      {% else %}
+        <p class="kpi-value">—</p>
+        <p class="kpi-detail">No orca sightings yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
   <h2>Sightings by species</h2>
   {% if species_counts %}
     <ul>
