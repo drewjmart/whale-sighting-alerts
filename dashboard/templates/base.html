@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{ theme }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,6 +18,29 @@
       --accent:    #2a78d6;
     }
 
+    /* Dark mode (2026-09-08) -- an explicit toggle (dashboard/app.py's
+       theme cookie stamps data-theme on <html> server-side), not an
+       automatic prefers-color-scheme flip. That's deliberate: charts and
+       the map are server-rendered HTML, re-colored from the same cookie
+       on the next request, not live components that could react to an
+       OS setting on their own -- an automatic flip would desync page
+       chrome (which could follow prefers-color-scheme) from charts
+       (which couldn't), so both follow one explicit choice instead.
+       Values are the dataviz skill's reference dark steps for a
+       #1a1a19 surface, same as viz/colors.py's *_DARK constants --
+       contrast re-verified for real against that surface (see
+       viz/colors.py's docstring). */
+    :root[data-theme="dark"] {
+      --surface:   #1a1a19;
+      --page:      #0d0d0d;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --ink-muted: #898781;
+      --gridline:  #2c2c2a;
+      --border:    rgba(255, 255, 255, 0.10);
+      --accent:    #3987e5;
+    }
+
     * { box-sizing: border-box; }
 
     body {
@@ -32,11 +55,26 @@
 
     nav {
       display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 1.5rem;
       padding: 1.25rem 0;
       border-bottom: 1px solid var(--gridline);
       margin-bottom: 1.75rem;
     }
+    .nav-links { display: flex; gap: 1.5rem; }
+    .theme-toggle {
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--ink-2);
+      background: var(--surface);
+      border: 1px solid var(--gridline);
+      border-radius: 999px;
+      padding: 0.3rem 0.8rem;
+      cursor: pointer;
+    }
+    .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
     nav a {
       color: var(--ink-2);
       text-decoration: none;
@@ -218,11 +256,18 @@
 </head>
 <body>
   <nav>
-    <a href="/">Home</a>
-    <a href="/map">Map</a>
-    <a href="/analysis">Analysis</a>
-    <a href="/pivots">Pivot tables</a>
-    <a href="/about">About</a>
+    <div class="nav-links">
+      <a href="/">Home</a>
+      <a href="/map">Map</a>
+      <a href="/analysis">Analysis</a>
+      <a href="/pivots">Pivot tables</a>
+      <a href="/about">About</a>
+    </div>
+    <form method="post" action="/theme/toggle">
+      <button type="submit" class="theme-toggle">
+        {% if theme == "dark" %}☀️ Light{% else %}🌙 Dark{% endif %}
+      </button>
+    </form>
   </nav>
   {% block content %}{% endblock %}
 </body>

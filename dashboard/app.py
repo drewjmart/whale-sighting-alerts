@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
-from flask import Flask, abort, render_template, request
+from flask import Flask, abort, redirect, render_template, request
 
 # Found while wiring up the Acartia token: nothing in this codebase loaded
 # .env anywhere, so ALERT_CENTER_LAT/LON/RADIUS_MILES (alerts/geo_filter.py)
@@ -34,6 +34,36 @@ def _conn():
     # One short-lived connection per request -- simple and correct for a
     # local, single-user dashboard; not meant to scale past that.
     return get_connection(DEFAULT_DB_PATH)
+
+
+def _current_theme() -> str:
+    """Dark mode (2026-09-08) is an explicit, persisted choice -- not an
+    automatic prefers-color-scheme flip -- so page chrome, every chart,
+    and the map basemap all agree on the same theme at request time
+    without needing a client-side re-render for the charts/map (which are
+    server-rendered HTML, not live JS components)."""
+    theme = request.cookies.get("theme", "light")
+    return theme if theme in ("light", "dark") else "light"
+
+
+@app.context_processor
+def inject_theme():
+    # Makes {{ theme }} available in every template (the nav toggle button,
+    # and base.html's <html data-theme="..."> stamp) without every view
+    # function having to pass it explicitly.
+    return {"theme": _current_theme()}
+
+
+@app.route("/theme/toggle", methods=["POST"])
+def toggle_theme():
+    """Flips the theme cookie and redirects back to whatever page the
+    toggle was clicked from. No JS re-render needed -- charts and the map
+    are re-rendered server-side on the next request anyway, from the same
+    cookie every view function reads via _current_theme()."""
+    new_theme = "light" if _current_theme() == "dark" else "dark"
+    response = redirect(request.referrer or "/")
+    response.set_cookie("theme", new_theme, max_age=60 * 60 * 24 * 365, samesite="Lax")
+    return response
 
 
 @app.route("/")
@@ -118,6 +148,7 @@ def map_frame():
             species=filters["species"],
             pod_codes=filters["pod"],
             trusted_only=filters["trust"] == "trusted",
+            theme=_current_theme(),
         )
     finally:
         conn.close()
@@ -157,13 +188,14 @@ def analysis_view():
     end_date = request.args.get("end_date") or None
     species = request.args.getlist("species") or None
 
+    theme = _current_theme()
     conn = _conn()
     try:
         charts = [
-            tide_state_chart(conn, start_date=start_date, end_date=end_date, species=species),
-            tide_height_chart(conn, start_date=start_date, end_date=end_date, species=species),
-            chinook_cpue_chart(conn, start_date=start_date, end_date=end_date, species=species),
-            seasonal_chart(conn, start_date=start_date, end_date=end_date, species=species),
+            tide_state_chart(conn, start_date=start_date, end_date=end_date, species=species, theme=theme),
+            tide_height_chart(conn, start_date=start_date, end_date=end_date, species=species, theme=theme),
+            chinook_cpue_chart(conn, start_date=start_date, end_date=end_date, species=species, theme=theme),
+            seasonal_chart(conn, start_date=start_date, end_date=end_date, species=species, theme=theme),
         ]
     finally:
         conn.close()
