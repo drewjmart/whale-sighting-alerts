@@ -124,6 +124,35 @@ def compute_tide_state(at: datetime, events: list[TideEvent]) -> tuple[str | Non
     return state, round(height, 3)
 
 
+def tide_state_exposure_minutes(events: list[TideEvent]) -> dict[str, float]:
+    """Total real minutes spent in each tide state across a span of
+    events -- needed to compare sighting counts *by rate*, not raw count.
+
+    'slack' is a fixed +/-30min band around every extreme (SLACK_WINDOW_MINUTES),
+    while 'flood'/'ebb' are the multi-hour legs between extremes -- so slack's
+    time window is mechanically much smaller. A raw sighting-count comparison
+    would always show fewer slack sightings for that reason alone, regardless
+    of whether whales actually behave differently at slack tide. This computes
+    the real, per-leg exposure so a rate (sightings per hour of that state)
+    can be computed instead.
+    """
+    events = sorted(events, key=lambda e: e.at)
+    totals = {"flood": 0.0, "ebb": 0.0, "slack": 0.0}
+
+    for prev_event, next_event in zip(events, events[1:]):
+        leg_minutes = (next_event.at - prev_event.at).total_seconds() / 60
+        slack_minutes = min(SLACK_WINDOW_MINUTES, leg_minutes / 2) * 2
+        remaining = max(0.0, leg_minutes - slack_minutes)
+
+        totals["slack"] += slack_minutes
+        if prev_event.kind == "L":
+            totals["flood"] += remaining
+        else:
+            totals["ebb"] += remaining
+
+    return totals
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     now = datetime.now()

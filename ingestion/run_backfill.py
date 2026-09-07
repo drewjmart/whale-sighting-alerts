@@ -37,6 +37,7 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analysis.pivots import location_by_species, pod_by_month, species_by_month
 from ingestion.acartia_client import AcartiaClient, AcartiaClientError
+from ingestion.chinook_cpue import ChinookCpueError, fetch_bonneville_passage
 from ingestion.moon_phase import compute_experimental_moon_phase
 from ingestion.orca_network_archive import fetch_archive, OrcaNetworkArchiveError
 from ingestion.tide import TideClientError, compute_tide_state, fetch_tide_predictions
@@ -108,8 +109,18 @@ def _ingest_orca_network(conn) -> int:
 
 def _enrich_environmental_context(conn) -> None:
     """Attach tide state (all species) to every sighting that doesn't have
-    it yet. Chinook CPUE and moon phase are added too, per the feature
-    hierarchy (CPUE orca-only; moon phase always labeled experimental_)."""
+    it yet, plus Chinook CPUE (orca records only, via Bonneville Dam daily
+    passage counts -- see below) and experimental moon phase (all species).
+
+    Audit finding (2026-09-05): this function previously hardcoded
+    chinook_cpue to None unconditionally. ingestion/chinook_cpue.py's
+    Bonneville client is real and verified live, but nothing ever called
+    it here -- it just cited the *unverified* Albion source as the reason
+    and left it at that, silently leaving every row's CPUE empty
+    regardless of species. Fixed: Bonneville daily Chinook counts (the
+    'Chin' column) are used as the CPUE proxy for orca records; still None
+    for every other species per the feature hierarchy.
+    """
     rows = conn.execute(
         """
         SELECT s.id, s.sighting_date, s.sighting_time, s.species
@@ -123,6 +134,7 @@ def _enrich_environmental_context(conn) -> None:
         return
 
     dates = sorted({date.fromisoformat(r["sighting_date"]) for r in rows})
+
     try:
         tide_events = fetch_tide_predictions(
             datetime.combine(dates[0], time.min) - timedelta(days=1),
@@ -132,18 +144,27 @@ def _enrich_environmental_context(conn) -> None:
         logger.warning("Tide enrichment skipped: %s", exc)
         tide_events = []
 
+    try:
+        passage_records = fetch_bonneville_passage(dates[0], dates[-1])
+        chinook_by_date = {r.record_date: r.chinook_count for r in passage_records}
+        logger.info("Bonneville Chinook passage: %d day(s) of data fetched", len(chinook_by_date))
+    except ChinookCpueError as exc:
+        logger.warning("Chinook CPUE enrichment skipped: %s", exc)
+        chinook_by_date = {}
+
     enriched = 0
     for row in rows:
-        sighting_dt = datetime.combine(
-            date.fromisoformat(row["sighting_date"]),
-            time.fromisoformat(row["sighting_time"]),
-        )
+        sighting_date = date.fromisoformat(row["sighting_date"])
+        sighting_dt = datetime.combine(sighting_date, time.fromisoformat(row["sighting_time"]))
+
         tide_state, tide_height = (None, None)
         if tide_events:
             tide_state, tide_height = compute_tide_state(sighting_dt, tide_events)
 
+        chinook_cpue = chinook_by_date.get(sighting_date) if row["species"] == "orca" else None
+
         context = {
-            "chinook_cpue": None,  # see ingestion/chinook_cpue.py -- not yet a verified live source
+            "chinook_cpue": chinook_cpue,
             "tide_height_ft": tide_height,
             "tide_state": tide_state,
             "experimental_moon_phase": compute_experimental_moon_phase(sighting_dt.date()),

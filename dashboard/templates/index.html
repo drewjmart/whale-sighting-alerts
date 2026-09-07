@@ -2,7 +2,24 @@
 {% block title %}Whale Sighting Tracker{% endblock %}
 {% block content %}
   <h1>🐋 Whale Sighting Tracker</h1>
-  <p>Historical trend and migration tracking across orca, humpback, and gray whale sightings.</p>
+  <p class="lede">Historical trend and migration tracking across orca, humpback, and gray whale sightings.</p>
+
+  <div class="summary-card">
+    <h2 class="summary-heading">Last 24 hours</h2>
+    {% if recent.total > 0 %}
+      <p class="summary-total">{{ recent.total }} sighting{{ 's' if recent.total != 1 }} reported</p>
+      <ul class="summary-list">
+        {% for g in recent.groups %}
+          <li>
+            <strong>{{ g.count }}</strong> sighting{{ 's' if g.count != 1 }} of
+            <strong>{{ g.species }}</strong> near <strong>{{ g.location }}</strong>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="summary-total">No sightings reported in the last 24 hours.</p>
+    {% endif %}
+  </div>
 
   <h2>Sightings by species</h2>
   {% if species_counts %}
