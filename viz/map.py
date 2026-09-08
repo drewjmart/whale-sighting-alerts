@@ -19,6 +19,7 @@ from folium.plugins import MarkerCluster
 from jinja2 import Template
 
 from analysis.location_query import query_point, query_region
+from normalization.pod_resolver import pod_code_display, species_display_name
 from storage.db import query_sightings
 from viz.colors import chart_chrome, color_for_species_or_pod, pod_colors, species_colors
 
@@ -106,10 +107,11 @@ def _marker_color(row: sqlite3.Row, theme: str = "light") -> str:
 
 
 def _popup_html(row: sqlite3.Row) -> str:
-    pod = f" ({row['pod_code']})" if row["pod_code"] else ""
+    pod_display = pod_code_display(row["pod_code"])
+    pod = f" ({pod_display})" if pod_display else ""
     trusted = "trusted" if row["trusted"] else ("untrusted" if row["trusted"] is not None else "trust unknown")
     return (
-        f"<b>{row['species']}{pod}</b><br>"
+        f"<b>{species_display_name(row['species'])}{pod}</b><br>"
         f"{row['sighting_date']} {row['sighting_time'] or ''}<br>"
         f"{row['location_name'] or ''}<br>"
         f"<i>{trusted}, source: {row['source']}</i>"

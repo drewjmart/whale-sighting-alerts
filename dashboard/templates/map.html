@@ -21,7 +21,7 @@
       {% for s in all_species %}
         <label class="checkbox-option">
           <input type="checkbox" name="species" value="{{ s }}" {% if s in selected_species %}checked{% endif %}>
-          {{ s }}
+          {{ s | friendly_species }}
         </label>
       {% endfor %}
     </fieldset>

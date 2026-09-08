@@ -37,13 +37,13 @@
     </div>
 
     <div class="kpi-tile">
-      <p class="kpi-label">Most active location (last 24h)</p>
+      <p class="kpi-label">Most active location (last 7 days)</p>
       {% if kpis.active_location.location %}
         <p class="kpi-value">{{ kpis.active_location.location }}</p>
         <p class="kpi-detail">{{ kpis.active_location.count }} sighting{{ 's' if kpis.active_location.count != 1 }}</p>
       {% else %}
         <p class="kpi-value">—</p>
-        <p class="kpi-detail">No sightings in the last 24 hours.</p>
+        <p class="kpi-detail">No sightings in the last 7 days.</p>
       {% endif %}
     </div>
 
@@ -51,22 +51,19 @@
       <p class="kpi-label">Days since last sighting</p>
       <ul class="kpi-species-list">
         {% for species, days in kpis.days_since.items() %}
-          <li><span>{{ species }}</span> <strong>{{ days if days is not none else "never" }}</strong></li>
+          <li><span>{{ species | friendly_species }}</span> <strong>{{ days if days is not none else "never" }}</strong></li>
         {% endfor %}
       </ul>
     </div>
 
     <div class="kpi-tile">
-      <p class="kpi-label">Orca pod resolution rate</p>
-      {% if kpis.pod_resolution.total > 0 %}
-        <p class="kpi-value">{{ kpis.pod_resolution.resolution_rate_pct }}%</p>
-        <p class="kpi-detail">
-          {{ kpis.pod_resolution.resolved }} identified, {{ kpis.pod_resolution.unresolved }} unresolved,
-          of {{ kpis.pod_resolution.total }} orca sightings
-        </p>
+      <p class="kpi-label">Most active pod this {{ kpis.active_pod.season }}</p>
+      {% if kpis.active_pod.pod %}
+        <p class="kpi-value">{{ kpis.active_pod.pod | friendly_pod }}</p>
+        <p class="kpi-detail">{{ kpis.active_pod.count }} sighting{{ 's' if kpis.active_pod.count != 1 }}</p>
       {% else %}
         <p class="kpi-value">—</p>
-        <p class="kpi-detail">No orca sightings yet.</p>
+        <p class="kpi-detail">No specific pod identified yet this season.</p>
       {% endif %}
     </div>
   </div>

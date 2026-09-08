@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from analysis.pivots import location_by_species, pod_by_month, species_by_month
+from analysis.pivots import add_totals, location_by_species, pod_by_month, species_by_month
 from storage import db
 
 FIXTURE_RECORDS = [
@@ -92,3 +92,23 @@ def test_pivots_never_crash_on_empty_db(tmp_path: Path):
     assert pod_by_month(empty_conn).empty
     assert species_by_month(empty_conn).empty
     assert location_by_species(empty_conn).empty
+
+
+def test_add_totals_sums_rows_and_columns_correctly(conn):
+    result = add_totals(species_by_month(conn))
+
+    # Row totals: orca=5 (3 Aug + 2 Sep, per test_species_by_month_covers_all_species).
+    assert result.loc["orca", "Total"] == 5
+    assert result.loc["humpback", "Total"] == 1
+    assert result.loc["gray_whale", "Total"] == 1
+    # Column totals, and the grand-total corner (sum of the Total column).
+    assert result.loc["Total", "2026-08"] == 4  # 3 orca + 1 humpback
+    assert result.loc["Total", "2026-09"] == 3  # 2 orca + 1 gray_whale
+    assert result.loc["Total", "Total"] == 7
+
+
+def test_add_totals_leaves_an_empty_dataframe_alone(tmp_path: Path):
+    empty_db = tmp_path / "empty.sqlite3"
+    db.init_db(empty_db)
+    empty_conn = db.get_connection(empty_db)
+    assert add_totals(species_by_month(empty_conn)).empty

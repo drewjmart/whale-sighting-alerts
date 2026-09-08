@@ -8,7 +8,7 @@ waters; the tracker's location-scoped queries live in location_query.py.
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -73,6 +73,22 @@ def location_by_species(conn: sqlite3.Connection) -> pd.DataFrame:
     )
 
 
+def add_totals(df: pd.DataFrame) -> pd.DataFrame:
+    """Add a 'Total' row and column to a pivot table -- for *display* only
+    (dashboard/app.py's /pivots HTML tables), never for further
+    computation: pod_by_month/species_by_month/location_by_species stay
+    margin-free themselves since viz/trends.py's charts and this module's
+    own species_counts/KPI derivations sum these DataFrames directly --
+    adding a 'Total' row/column at the source would silently double those
+    sums. Returns df unchanged if it's empty (nothing to total)."""
+    if df.empty:
+        return df
+    totaled = df.copy()
+    totaled["Total"] = totaled.sum(axis=1)
+    totaled.loc["Total"] = totaled.sum(axis=0)
+    return totaled
+
+
 def recent_24h_summary(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
     """'X sightings of [species] near [location] in the last 24 hours,'
     broken out by species and location, for the dashboard home page.
@@ -129,6 +145,32 @@ def recent_24h_summary(conn: sqlite3.Connection, now: datetime | None = None) ->
     }
 
 
+def _current_season_window(today: date) -> tuple[str, set[int], int]:
+    """(season_name, valid_months, season_year) for `today`, shared by
+    every KPI that needs "is this date in the current season" --
+    season_year is the calendar year that counts as a match for
+    `_date_in_season` below. Extracted 2026-09-08 when a second KPI
+    (most_active_pod_this_season) needed the exact same season/year-
+    boundary logic as season_total_with_change."""
+    season = derive_season(today)
+    season_months = {
+        "winter": {12, 1, 2}, "spring": {3, 4, 5}, "summer": {6, 7, 8}, "fall": {9, 10, 11},
+    }[season]
+    # Winter spans a year boundary (Dec-Feb); every other season is
+    # entirely within one calendar year, so "this season" only needs a
+    # year match for those three. season_year is the December's year.
+    season_year = today.year if (season != "winter" or today.month == 12) else today.year - 1
+    return season, season_months, season_year
+
+
+def _date_in_season(d: date, season: str, season_months: set[int], season_year: int) -> bool:
+    if d.month not in season_months:
+        return False
+    if season == "winter":
+        return d.year == (season_year + 1 if d.month != 12 else season_year)
+    return d.year == season_year
+
+
 def season_total_with_change(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
     """KPI (2026-09-08): total sightings in the current meteorological
     season (see analysis/correlations.py's derive_season -- same
@@ -145,25 +187,12 @@ def season_total_with_change(conn: sqlite3.Connection, now: datetime | None = No
     """
     now = now or datetime.now(timezone.utc)
     today = now.date()
-    season = derive_season(today)
-    season_months = {
-        "winter": {12, 1, 2}, "spring": {3, 4, 5}, "summer": {6, 7, 8}, "fall": {9, 10, 11},
-    }[season]
+    season, season_months, season_year = _current_season_window(today)
 
     rows = conn.execute("SELECT sighting_date FROM sightings").fetchall()
     dates = [datetime.strptime(r["sighting_date"], "%Y-%m-%d").date() for r in rows]
 
-    # Winter spans a year boundary (Dec-Feb); every other season is
-    # entirely within one calendar year, so "this season" only needs a
-    # year match for those three.
-    if season == "winter":
-        season_year = today.year if today.month == 12 else today.year - 1
-        season_total = sum(
-            1 for d in dates
-            if d.month in season_months and (d.year == season_year + 1 if d.month != 12 else d.year == season_year)
-        )
-    else:
-        season_total = sum(1 for d in dates if d.month in season_months and d.year == today.year)
+    season_total = sum(1 for d in dates if _date_in_season(d, season, season_months, season_year))
 
     week_start = today - timedelta(days=7)
     prior_week_start = today - timedelta(days=14)
@@ -181,14 +210,17 @@ def season_total_with_change(conn: sqlite3.Connection, now: datetime | None = No
     }
 
 
-def most_active_location(conn: sqlite3.Connection, now: datetime | None = None, window_hours: int = 24) -> dict:
+def most_active_location(conn: sqlite3.Connection, now: datetime | None = None, window_hours: int = 24 * 7) -> dict:
     """KPI: the single named location with the most sightings in the last
-    `window_hours` -- "right now" per the ask, so 24h by default, same
-    window as the home page's recent_24h_summary (deliberately reusing
-    that window rather than inventing a second one for consistency
-    between the two home-page KPIs). Ties broken by whichever location
-    sorts first alphabetically -- arbitrary but deterministic, not
-    meaningful on its own.
+    `window_hours` -- 7 days by default (2026-09-08: widened from 24h,
+    which was too narrow a window to reliably surface a location most
+    days -- sightings are sparse enough that "in the last 24h" was often
+    empty even in an active week). Deliberately a different window than
+    the home page's recent_24h_summary card right above it -- that one is
+    specifically about "right now," this one's answering "where should I
+    go this week." Ties broken by whichever location sorts first
+    alphabetically -- arbitrary but deterministic, not meaningful on its
+    own.
 
     Returns location=None (not a location picked at random) when nothing
     is in the window, or when every sighting in the window falls outside
@@ -242,30 +274,45 @@ def days_since_last_sighting(conn: sqlite3.Connection, now: datetime | None = No
     return result
 
 
-def orca_pod_resolution_rate(conn: sqlite3.Connection) -> dict:
-    """Data-quality KPI: of all orca sightings, what fraction actually got
-    a specific pod identified (J/K/L/Bigg's) vs. left as
-    SRKW-unspecified-or-unknown. Low resolution doesn't mean the
-    sightings are wrong -- it means the source reports didn't include
-    enough detail to identify a pod, which is itself useful to know
-    about the data, hence surfacing it as a KPI rather than only inside
-    the pod x month pivot table."""
-    rows = conn.execute("SELECT pod_code FROM sightings WHERE species = 'orca'").fetchall()
-    total = len(rows)
-    if total == 0:
-        return {"resolved": 0, "unresolved": 0, "total": 0, "resolution_rate_pct": None}
+def most_active_pod_this_season(conn: sqlite3.Connection, now: datetime | None = None) -> dict:
+    """KPI (2026-09-08, replacing orca_pod_resolution_rate -- a
+    data-quality metric wasn't a useful thing to lead the home page with):
+    which specific orca pod (J/K/L/Bigg's) has the most sightings so far
+    this season -- something a whale watcher can actually act on, unlike
+    a resolution-rate percentage.
 
-    resolved = sum(
-        1 for row in rows
-        if row["pod_code"] and any(p in _RESOLVED_POD_CODES for p in row["pod_code"].split(","))
-    )
-    unresolved = total - resolved
-    return {
-        "resolved": resolved,
-        "unresolved": unresolved,
-        "total": total,
-        "resolution_rate_pct": round(resolved / total * 100, 1),
-    }
+    SRKW-unspecified and fully-unresolved sightings are excluded from the
+    count (not just deprioritized) -- neither is an actual pod someone
+    could look for, so counting them toward a "most active pod" would
+    misrepresent what's being measured. Uses the same season/year
+    definition as season_total_with_change so the two home-page season
+    KPIs can't disagree about what "this season" means.
+
+    Returns pod=None (not a guess) when no resolved pod has been sighted
+    at all this season yet -- a real, if unlikely, case."""
+    now = now or datetime.now(timezone.utc)
+    today = now.date()
+    season, season_months, season_year = _current_season_window(today)
+
+    rows = conn.execute(
+        "SELECT sighting_date, pod_code FROM sightings WHERE species = 'orca'"
+    ).fetchall()
+
+    counts = {code: 0 for code in _RESOLVED_POD_CODES}
+    for row in rows:
+        d = datetime.strptime(row["sighting_date"], "%Y-%m-%d").date()
+        if not _date_in_season(d, season, season_months, season_year):
+            continue
+        if not row["pod_code"]:
+            continue
+        for code in row["pod_code"].split(","):
+            if code in counts:
+                counts[code] += 1
+
+    top_pod, top_count = max(counts.items(), key=lambda kv: kv[1])
+    if top_count == 0:
+        return {"pod": None, "count": 0, "season": season}
+    return {"pod": top_pod, "count": top_count, "season": season}
 
 
 if __name__ == "__main__":

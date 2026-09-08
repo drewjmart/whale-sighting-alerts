@@ -22,21 +22,35 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 from analysis.location_query import known_regions, query_region
 from analysis.pivots import (
+    add_totals,
     days_since_last_sighting,
     location_by_species,
     most_active_location,
-    orca_pod_resolution_rate,
+    most_active_pod_this_season,
     pod_by_month,
     recent_24h_summary,
     season_total_with_change,
     species_by_month,
 )
-from normalization.pod_resolver import VALID_SPECIES
+from normalization.pod_resolver import (
+    POD_DISPLAY_NAMES,
+    SPECIES_DISPLAY_NAMES,
+    VALID_SPECIES,
+    pod_code_display,
+    species_display_name,
+)
 from storage.db import DEFAULT_DB_PATH, get_connection
 from viz.correlations import chinook_cpue_chart, seasonal_chart, tide_height_chart, tide_state_chart
 from viz.map import POD_ROWS, build_map
 
 app = Flask(__name__)
+
+# Friendly display names (2026-09-08) everywhere a species/pod code would
+# otherwise reach the page verbatim -- {{ s | friendly_species }} instead
+# of every template inventing its own title-casing, and one place to fix
+# if VALID_SPECIES ever grows.
+app.jinja_env.filters["friendly_species"] = species_display_name
+app.jinja_env.filters["friendly_pod"] = pod_code_display
 
 
 def _conn():
@@ -88,7 +102,7 @@ def index():
             season=season_total_with_change(conn),
             active_location=most_active_location(conn),
             days_since=days_since_last_sighting(conn),
-            pod_resolution=orca_pod_resolution_rate(conn),
+            active_pod=most_active_pod_this_season(conn),
         )
     finally:
         conn.close()
@@ -174,11 +188,18 @@ def pivots_view():
     conn = _conn()
     try:
         species_month = species_by_month(conn)
-        species_counts = {species: int(row.sum()) for species, row in species_month.iterrows()}
+        species_counts = {
+            species_display_name(species): int(row.sum())
+            for species, row in species_month.iterrows()
+        }
+        # .rename() only touches keys present in the map -- "Total" (the
+        # margins row/column added below) passes through unrenamed.
         tables = {
-            "Orca sightings by pod x month": pod_by_month(conn),
-            "Sightings by species x month": species_month,
-            "Sightings by location x species": location_by_species(conn),
+            "Orca sightings by pod x month": add_totals(pod_by_month(conn).rename(index=POD_DISPLAY_NAMES)),
+            "Sightings by species x month": add_totals(species_month.rename(index=SPECIES_DISPLAY_NAMES)),
+            "Sightings by location x species": add_totals(
+                location_by_species(conn).rename(columns=SPECIES_DISPLAY_NAMES)
+            ),
         }
     finally:
         conn.close()

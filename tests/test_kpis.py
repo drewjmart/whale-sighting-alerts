@@ -1,7 +1,7 @@
 """
 Tests for analysis/pivots.py's home-page KPI functions (2026-09-08):
 season total + week-over-week change, most active location, days since
-last sighting per species, and the orca pod resolution rate.
+last sighting per species, and the most active orca pod this season.
 """
 
 from datetime import datetime, timezone
@@ -12,7 +12,7 @@ import pytest
 from analysis.pivots import (
     days_since_last_sighting,
     most_active_location,
-    orca_pod_resolution_rate,
+    most_active_pod_this_season,
     season_total_with_change,
 )
 from storage import db
@@ -86,10 +86,23 @@ def test_most_active_location_picks_the_highest_count(conn):
     assert result["count"] == 2
 
 
+def test_most_active_location_default_window_is_seven_days_not_24h(conn):
+    # 3 days before FIXED_NOW -- outside the old 24h default, inside the
+    # current 7-day default. Confirms the window actually widened rather
+    # than the default still silently being 24h.
+    db.insert_sightings(conn, [
+        _record("2026-09-01", "orca", lat=47.5763, lon=-122.4181, external_id="w1", sighting_time="09:00:00"),
+    ])
+    result = most_active_location(conn, now=FIXED_NOW)
+    assert result["location"] == "Alki Point"
+    assert result["count"] == 1
+    assert result["window_hours"] == 24 * 7
+
+
 def test_most_active_location_is_none_not_a_guess_when_window_is_empty(conn):
     db.insert_sightings(conn, [_record("2026-08-01", "orca", external_id="old")])  # weeks before FIXED_NOW
     result = most_active_location(conn, now=FIXED_NOW)
-    assert result == {"location": None, "count": 0, "window_hours": 24}
+    assert result == {"location": None, "count": 0, "window_hours": 24 * 7}
 
 
 # ── days_since_last_sighting ──────────────────────────────────────────────
@@ -105,25 +118,30 @@ def test_days_since_last_sighting_per_species(conn):
     assert result["dolphin"] is None  # never sighted -- not 0, not a huge fake number
 
 
-# ── orca_pod_resolution_rate ──────────────────────────────────────────────
+# ── most_active_pod_this_season ────────────────────────────────────────────
 
-def test_orca_pod_resolution_rate_counts_identified_vs_not(conn):
+def test_most_active_pod_picks_the_highest_count_this_season(conn):
     db.insert_sightings(conn, [
-        _record("2026-09-01", "orca", pod_code="J", external_id="r1"),
-        _record("2026-09-01", "orca", pod_code="J,L", external_id="r2"),        # multi-pod, still resolved
-        _record("2026-09-01", "orca", pod_code="SRKW_UNSPECIFIED", external_id="r3"),
-        _record("2026-09-01", "orca", pod_code="UNKNOWN", external_id="r4"),
-        _record("2026-09-01", "orca", pod_code=None, external_id="r5"),
-        _record("2026-09-01", "humpback", external_id="r6"),  # not orca -- excluded entirely
+        _record("2026-09-01", "orca", pod_code="J", external_id="p1"),
+        _record("2026-09-02", "orca", pod_code="J", external_id="p2"),
+        _record("2026-09-02", "orca", pod_code="J,L", external_id="p3"),  # multi-pod -- both J and L count
+        _record("2026-09-03", "orca", pod_code="K", external_id="p4"),
+        _record("2026-06-15", "orca", pod_code="K", external_id="p5"),   # summer -- not this season, excluded
     ])
-    result = orca_pod_resolution_rate(conn)
-    assert result["total"] == 5
-    assert result["resolved"] == 2
-    assert result["unresolved"] == 3
-    assert result["resolution_rate_pct"] == 40.0
+    result = most_active_pod_this_season(conn, now=FIXED_NOW)
+    assert result["season"] == "fall"
+    assert result["pod"] == "J"
+    assert result["count"] == 3
 
 
-def test_orca_pod_resolution_rate_handles_zero_orca_sightings(conn):
-    db.insert_sightings(conn, [_record("2026-09-01", "humpback", external_id="h1")])
-    result = orca_pod_resolution_rate(conn)
-    assert result == {"resolved": 0, "unresolved": 0, "total": 0, "resolution_rate_pct": None}
+def test_most_active_pod_excludes_unresolved_and_unspecified(conn):
+    # Only SRKW-unspecified and fully-unknown sightings this season -- no
+    # actual pod was ever identified, so there's no answer, not "UNKNOWN".
+    db.insert_sightings(conn, [
+        _record("2026-09-01", "orca", pod_code="SRKW_UNSPECIFIED", external_id="u1"),
+        _record("2026-09-01", "orca", pod_code="UNKNOWN", external_id="u2"),
+        _record("2026-09-01", "orca", pod_code=None, external_id="u3"),
+        _record("2026-09-01", "humpback", external_id="u4"),  # not orca -- irrelevant either way
+    ])
+    result = most_active_pod_this_season(conn, now=FIXED_NOW)
+    assert result == {"pod": None, "count": 0, "season": "fall"}

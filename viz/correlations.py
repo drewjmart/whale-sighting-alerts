@@ -17,7 +17,7 @@ from analysis.correlations import (
     data_span_summary,
     sightings_by_season_and_year,
     sightings_by_tide_state,
-    tide_height_trend,
+    tide_height_vs_sightings,
 )
 from viz.colors import chart_chrome, pod_colors
 
@@ -91,6 +91,18 @@ def tide_state_chart(
     return fig
 
 
+def _min_max_normalize(series):
+    """Scale a series to 0-100 over its own [min, max] -- used instead of
+    "% of max" (chinook_cpue_chart's approach) for tide height specifically,
+    since tide height can be negative (MLLW datum) and "% of max" distorts
+    once negative values are in play. A flat/constant series (max == min)
+    normalizes to a flat 50 rather than dividing by zero."""
+    lo, hi = series.min(), series.max()
+    if hi == lo:
+        return series * 0 + 50
+    return (series - lo) / (hi - lo) * 100
+
+
 def tide_height_chart(
     conn: sqlite3.Connection,
     *,
@@ -99,32 +111,58 @@ def tide_height_chart(
     species: list[str] | None = None,
     theme: str = "light",
 ) -> go.Figure:
-    """Tide height over the season -- positioned near tide_state_chart() on
-    the dashboard so the two are easy to compare visually, kept as two
-    separate single-axis charts rather than one dual-axis chart (a
-    dual-axis chart makes two different scales look artificially
-    comparable)."""
-    df = tide_height_trend(conn, start_date=start_date, end_date=end_date, species=species)
+    """Tide height alongside sighting counts, over the season -- so it's
+    visually clear whether sighting frequency tracks tide height (2026-09-08
+    feedback: the original version plotted only the tide curve with nothing
+    to compare it against, which wasn't the point of having it next to the
+    tide-state chart).
+
+    Same normalize-to-a-shared-axis approach as chinook_cpue_chart, and for
+    the same reason -- a literal dual-axis chart lets you make any two
+    series "look correlated" by choosing where each axis starts/ends, which
+    defeats the purpose when the entire point is judging correlation by
+    eye. Min-max normalized (not "% of max") specifically because tide
+    height can be negative; raw values are still on hover.
+    """
+    df = tide_height_vs_sightings(conn, start_date=start_date, end_date=end_date, species=species)
     fig = go.Figure()
     layout_defaults = _layout_defaults(theme)
-    gridline = chart_chrome(theme)["gridline"]
+    chrome = chart_chrome(theme)
+    pods = pod_colors(theme)
 
     if df.empty:
-        fig.update_layout(title="Tide height over the season (no data yet)", **layout_defaults)
+        fig.update_layout(title="Tide height vs. sightings (no data yet)", **layout_defaults)
         return fig
 
+    tide_norm = _min_max_normalize(df["tide_height_ft"])
+    count_norm = _min_max_normalize(df["sighting_count"])
+
     fig.add_trace(go.Scatter(
-        x=df["date"], y=df["tide_height_ft"], mode="lines",
-        line=dict(color=pod_colors(theme)["J"], width=2),
-        hovertemplate="%{x}: %{y:.2f} ft<extra></extra>",
+        x=df["date"], y=tide_norm, mode="lines", name="Tide height",
+        line=dict(color=pods["J"], width=2),
+        customdata=df["tide_height_ft"],
+        hovertemplate="%{x}: %{customdata:.2f} ft<extra></extra>",
     ))
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=count_norm, mode="lines", name="Sightings",
+        line=dict(color=pods["K"], width=2),
+        customdata=df["sighting_count"],
+        hovertemplate="%{x}: %{customdata:.0f} sighting(s)<extra></extra>",
+    ))
+    legend_bg = "rgba(26,26,25,0.8)" if theme == "dark" else "rgba(252,252,251,0.8)"
+    layout = dict(layout_defaults, margin=dict(l=50, r=20, t=90, b=40))  # taller top margin -- two-line title
     fig.update_layout(
-        title="Tide height over the season (daily average, MLLW)",
-        xaxis_title="Date", yaxis_title="Height (ft)",
-        **layout_defaults,
+        title=(
+            "Tide height vs. sightings, over the season "
+            "<br><sup>Both scaled to their own 0-100 range (not raw units) so they share one axis -- "
+            "hover for real values (tide height in ft, MLLW).</sup>"
+        ),
+        xaxis_title="Date", yaxis_title="Scaled 0-100 (own range)",
+        legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor=legend_bg),
+        **layout,
     )
-    fig.update_xaxes(gridcolor=gridline)
-    fig.update_yaxes(gridcolor=gridline)
+    fig.update_xaxes(gridcolor=chrome["gridline"])
+    fig.update_yaxes(gridcolor=chrome["gridline"])
     return fig
 
 
@@ -136,9 +174,18 @@ def chinook_cpue_chart(
     species: list[str] | None = None,
     theme: str = "light",
 ) -> go.Figure:
-    """Chinook CPUE (Bonneville daily passage count, used as the proxy)
-    over the season, alongside daily orca sighting counts -- so it's
+    """Daily Chinook salmon passage count at Bonneville Dam, used as a
+    salmon-activity proxy, alongside daily orca sighting counts -- so it's
     visually clear whether sighting frequency tracks salmon abundance.
+
+    Labeling (2026-09-08 feedback): the underlying data (and the
+    `chinook_cpue` field/function names throughout this codebase) uses
+    "CPUE" -- Catch Per Unit Effort, a fisheries term -- but what's
+    actually stored is a raw daily fish count at Bonneville Dam, not a
+    catch-per-effort figure. Every user-facing label here says "Chinook
+    salmon count/activity" instead; internal names are unchanged (a
+    field/column rename is a separate, riskier change than fixing what's
+    actually shown on screen).
 
     Deliberately NOT a dual-axis chart: two y-scales on one plot is the
     #1 chart-design mistake precisely because it lets you make any two
@@ -151,9 +198,9 @@ def chinook_cpue_chart(
 
     `species` is accepted for interface consistency with the other
     /analysis charts (so the page's filter form can call every chart the
-    same way) but has no effect -- this chart is always orca vs. CPUE.
-    A note says so explicitly rather than silently ignoring a filter the
-    viewer just set, which would look like a bug.
+    same way) but has no effect -- this chart is always orca vs. salmon
+    count. A note says so explicitly rather than silently ignoring a
+    filter the viewer just set, which would look like a bug.
     """
     df = chinook_cpue_vs_orca_sightings(conn, start_date=start_date, end_date=end_date)
     fig = go.Figure()
@@ -162,14 +209,14 @@ def chinook_cpue_chart(
     pods = pod_colors(theme)
     species_filter_note = (
         " Note: this chart is always orca-only regardless of the species filter above -- "
-        "CPUE has no meaning for other species."
+        "salmon activity has no meaning for other species."
         if species and species != ["orca"]
         else ""
     )
 
     if df.empty:
         fig.update_layout(
-            title="Chinook CPUE vs. orca sightings (no data yet)",
+            title="Chinook salmon activity vs. orca sightings (no data yet)",
             **layout_defaults,
         )
         return fig
@@ -180,10 +227,10 @@ def chinook_cpue_chart(
     count_norm = (df["sighting_count"] / count_max * 100) if count_max else df["sighting_count"]
 
     fig.add_trace(go.Scatter(
-        x=df["date"], y=cpue_norm, mode="lines", name="Chinook CPUE",
+        x=df["date"], y=cpue_norm, mode="lines", name="Chinook salmon count",
         line=dict(color=pods["K"], width=2),
         customdata=df["chinook_cpue"],
-        hovertemplate="%{x}: %{customdata:.0f} Chinook<extra></extra>",
+        hovertemplate="%{x}: %{customdata:.0f} Chinook (Bonneville Dam)<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
         x=df["date"], y=count_norm, mode="lines", name="Orca sightings",
@@ -195,10 +242,11 @@ def chinook_cpue_chart(
     layout = dict(layout_defaults, margin=dict(l=50, r=20, t=90, b=40))  # taller top margin -- two-line title
     fig.update_layout(
         title=(
-            "Chinook CPUE vs. orca sightings, over the season "
+            "Chinook salmon activity vs. orca sightings, over the season "
             "<br><sup>Both normalized to % of their own max (not raw units) so they share one axis -- "
-            "hover for real values. Bonneville Dam daily passage count used as the CPUE proxy; "
-            f"orca-relevant only, per the feature hierarchy.{species_filter_note}</sup>"
+            "hover for real values. Daily Chinook count at Bonneville Dam used as a salmon-activity proxy "
+            f"(not a true catch-per-effort figure); orca-relevant only, per the feature hierarchy."
+            f"{species_filter_note}</sup>"
         ),
         xaxis_title="Date", yaxis_title="% of season max",
         legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99, bgcolor=legend_bg),
