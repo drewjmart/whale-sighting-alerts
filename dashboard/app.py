@@ -8,6 +8,7 @@ this PR -- see README §Phase 2 for the (separate, later) Render step.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -109,6 +110,40 @@ def index():
     return render_template("index.html", recent=recent, kpis=kpis)
 
 
+_DATE_SHORTCUT_DAYS = (7, 14, 30)
+
+
+def _date_shortcut_urls(base_path: str, preserved_params: dict) -> dict[int, str]:
+    """'Last N days' shortcut links for a filter form (2026-09-13) -- one
+    helper shared by /map and /analysis so both pages' shortcuts are built
+    the same way, rather than each view re-deriving today's date and
+    re-encoding params. `preserved_params` carries every OTHER currently
+    set filter (species, pod, trust, ...) so clicking a shortcut narrows
+    the date range without silently discarding filters set elsewhere on
+    the same form."""
+    today = date.today()
+    urls = {}
+    for days in _DATE_SHORTCUT_DAYS:
+        params = dict(preserved_params)
+        params["start_date"] = (today - timedelta(days=days)).isoformat()
+        params["end_date"] = today.isoformat()
+        urls[days] = f"{base_path}?{urlencode(params, doseq=True)}"
+    return urls
+
+
+def _active_shortcut_days(start_date: str | None, end_date: str | None) -> int | None:
+    """Which shortcut (if any) exactly matches the current start/end date
+    -- purely cosmetic, to highlight the active one; returns None if the
+    current range doesn't match any shortcut (including no range at all)."""
+    today = date.today()
+    if not start_date or not end_date or end_date != today.isoformat():
+        return None
+    for days in _DATE_SHORTCUT_DAYS:
+        if start_date == (today - timedelta(days=days)).isoformat():
+            return days
+    return None
+
+
 def _map_filters_from_request() -> dict:
     return dict(
         start_date=request.args.get("start_date") or None,
@@ -146,6 +181,10 @@ def map_view():
     if filters["trust"] != "all":
         frame_params["trust"] = filters["trust"]
 
+    # frame_params minus the date keys is exactly "every other filter
+    # currently set" -- reuse it rather than re-deriving the same thing.
+    preserved = {k: v for k, v in frame_params.items() if k not in ("start_date", "end_date")}
+
     return render_template(
         "map.html",
         frame_query=urlencode(frame_params, doseq=True),
@@ -157,6 +196,8 @@ def map_view():
         end_date=filters["end_date"] or "",
         trust=filters["trust"],
         regions=known_regions(),
+        shortcut_urls=_date_shortcut_urls("/map", preserved),
+        active_shortcut_days=_active_shortcut_days(filters["start_date"], filters["end_date"]),
     )
 
 
@@ -242,6 +283,8 @@ def analysis_view():
         for i, fig in enumerate(charts)
     ]
 
+    preserved = {"species": species} if species else {}
+
     return render_template(
         "analysis.html",
         chart_html=chart_html,
@@ -249,6 +292,8 @@ def analysis_view():
         selected_species=species or [],
         start_date=start_date or "",
         end_date=end_date or "",
+        shortcut_urls=_date_shortcut_urls("/analysis", preserved),
+        active_shortcut_days=_active_shortcut_days(start_date, end_date),
     )
 
 
