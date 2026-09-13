@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from storage import db
-from viz.map import build_map
+from viz.map import build_map, orca_pod_tracks
 
 FIXTURE_RECORDS = [
     dict(sighting_date="2026-08-05", sighting_time="10:00:00", species="orca", pod_code="J",
@@ -83,3 +83,78 @@ def test_build_map_species_filter_accepts_a_list(conn):
     fmap = build_map(conn, species=["humpback"])
     html = fmap.get_root().render()
     assert html.count("L.circleMarker(") == 1
+
+
+def test_build_map_tracks_are_opt_in_and_off_by_default(conn):
+    # show_tracks defaults to False -- checked against the real data, an
+    # unfiltered view produces a dense, hard-to-read tangle of lines (see
+    # build_map's docstring), so tracks must be explicitly requested.
+    db.insert_sightings(conn, [
+        dict(sighting_date="2026-09-01", sighting_time="08:00:00", species="orca", pod_code="K",
+             location_name=None, latitude=48.5, longitude=-123.0, trusted=True, source="acartia",
+             external_id="track1", raw_text=""),
+        dict(sighting_date="2026-09-02", sighting_time="08:00:00", species="orca", pod_code="K",
+             location_name=None, latitude=48.6, longitude=-123.1, trusted=True, source="acartia",
+             external_id="track2", raw_text=""),
+    ])
+    html_default = build_map(conn).get_root().render()
+    assert "textpath" not in html_default.lower()
+
+    html_with_tracks = build_map(conn, show_tracks=True).get_root().render()
+    assert "textpath" in html_with_tracks.lower()
+
+
+def _row(sighting_date, sighting_time, species, pod_code, lat, lon):
+    return dict(
+        sighting_date=sighting_date, sighting_time=sighting_time, species=species, pod_code=pod_code,
+        location_name=None, latitude=lat, longitude=lon, trusted=True, source="acartia",
+        external_id=None, raw_text="",
+    )
+
+
+def test_orca_pod_tracks_connects_same_pod_within_the_gap_window():
+    rows = [
+        _row("2026-09-01", "08:00:00", "orca", "J", 47.0, -122.0),
+        _row("2026-09-02", "08:00:00", "orca", "J", 47.5, -122.2),  # 24h later -- connects
+    ]
+    tracks = orca_pod_tracks(rows)
+    assert tracks["J"] == [[(47.0, -122.0), (47.5, -122.2)]]
+
+
+def test_orca_pod_tracks_splits_on_a_gap_over_the_threshold():
+    rows = [
+        _row("2026-09-01", "08:00:00", "orca", "J", 47.0, -122.0),
+        _row("2026-09-10", "08:00:00", "orca", "J", 47.5, -122.2),  # 9 days later -- separate visit
+    ]
+    tracks = orca_pod_tracks(rows, max_gap_hours=48)
+    assert "J" not in tracks  # neither point has a same-segment partner -> no 2+-point segment
+
+
+def test_orca_pod_tracks_excludes_unspecified_and_unknown_pods():
+    rows = [
+        _row("2026-09-01", "08:00:00", "orca", "SRKW_UNSPECIFIED", 47.0, -122.0),
+        _row("2026-09-01", "09:00:00", "orca", "SRKW_UNSPECIFIED", 47.1, -122.1),
+        _row("2026-09-01", "08:00:00", "orca", "UNKNOWN", 47.0, -122.0),
+        _row("2026-09-01", "09:00:00", "orca", "UNKNOWN", 47.1, -122.1),
+    ]
+    assert orca_pod_tracks(rows) == {}
+
+
+def test_orca_pod_tracks_multi_pod_sighting_contributes_to_both_tracks():
+    rows = [
+        _row("2026-09-01", "08:00:00", "orca", "J", 47.0, -122.0),
+        _row("2026-09-01", "10:00:00", "orca", "J,L", 47.2, -122.1),
+        _row("2026-09-02", "08:00:00", "orca", "L", 47.4, -122.3),
+    ]
+    tracks = orca_pod_tracks(rows)
+    assert tracks["J"] == [[(47.0, -122.0), (47.2, -122.1)]]
+    assert tracks["L"] == [[(47.2, -122.1), (47.4, -122.3)]]
+
+
+def test_orca_pod_tracks_ignores_non_orca_and_missing_coordinates():
+    rows = [
+        _row("2026-09-01", "08:00:00", "humpback", None, 47.0, -122.0),
+        _row("2026-09-01", "09:00:00", "orca", "J", None, None),
+        _row("2026-09-01", "10:00:00", "orca", "J", 47.1, -122.1),
+    ]
+    assert orca_pod_tracks(rows) == {}  # only 1 valid J point -- can't form a 2-point segment

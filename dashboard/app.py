@@ -152,6 +152,7 @@ def _map_filters_from_request() -> dict:
         species=request.args.getlist("species") or None,
         pod=request.args.getlist("pod") or None,
         trust=request.args.get("trust") or "all",
+        tracks=request.args.get("tracks") == "1",
     )
 
 
@@ -180,6 +181,8 @@ def map_view():
         frame_params["pod"] = filters["pod"]
     if filters["trust"] != "all":
         frame_params["trust"] = filters["trust"]
+    if filters["tracks"]:
+        frame_params["tracks"] = "1"
 
     # frame_params minus the date keys is exactly "every other filter
     # currently set" -- reuse it rather than re-deriving the same thing.
@@ -195,6 +198,7 @@ def map_view():
         start_date=filters["start_date"] or "",
         end_date=filters["end_date"] or "",
         trust=filters["trust"],
+        show_tracks=filters["tracks"],
         regions=known_regions(),
         shortcut_urls=_date_shortcut_urls("/map", preserved),
         active_shortcut_days=_active_shortcut_days(filters["start_date"], filters["end_date"]),
@@ -218,6 +222,7 @@ def map_frame():
             pod_codes=filters["pod"],
             trusted_only=filters["trust"] == "trusted",
             theme=_current_theme(),
+            show_tracks=filters["tracks"],
         )
     finally:
         conn.close()
