@@ -21,21 +21,55 @@
     {% endif %}
   </div>
 
-  <h2>Sightings by species</h2>
-  {% if species_counts %}
-    <ul>
-      {% for species, count in species_counts.items() %}
-        <li><strong>{{ species }}</strong>: {{ count }}</li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <p>No data ingested yet.</p>
-  {% endif %}
+  <div class="kpi-grid">
+    <div class="kpi-tile">
+      <p class="kpi-label">Sightings this {{ kpis.season.season }}</p>
+      <p class="kpi-value">{{ kpis.season.season_total }}</p>
+      {% if kpis.season.change_pct is none %}
+        <p class="kpi-detail">No sightings in the prior week to compare against.</p>
+      {% else %}
+        <p class="kpi-detail">
+          {{ "▲" if kpis.season.change_pct > 0 else ("▼" if kpis.season.change_pct < 0 else "―") }}
+          {{ kpis.season.change_pct | abs }}% week-over-week
+          ({{ kpis.season.current_week_count }} vs. {{ kpis.season.prior_week_count }} sightings)
+        </p>
+      {% endif %}
+    </div>
 
-  <h2>Browse a region</h2>
-  <ul>
-    {% for region in regions %}
-      <li><a href="/region/{{ region }}">{{ region }}</a></li>
-    {% endfor %}
-  </ul>
+    <div class="kpi-tile">
+      <p class="kpi-label">Most active location (last 7 days)</p>
+      {% if kpis.active_location.location %}
+        <p class="kpi-value">{{ kpis.active_location.location }}</p>
+        <p class="kpi-detail">{{ kpis.active_location.count }} sighting{{ 's' if kpis.active_location.count != 1 }}</p>
+      {% else %}
+        <p class="kpi-value">—</p>
+        <p class="kpi-detail">No sightings in the last 7 days.</p>
+      {% endif %}
+    </div>
+
+    <div class="kpi-tile">
+      <p class="kpi-label">Days since last sighting</p>
+      <ul class="kpi-species-list">
+        {% for species, days in kpis.days_since.items() %}
+          <li><span>{{ species | friendly_species }}</span> <strong>{{ days if days is not none else "never" }}</strong></li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="kpi-tile">
+      <p class="kpi-label">Most active pod this {{ kpis.active_pod.season }}</p>
+      {% if kpis.active_pod.pod %}
+        <p class="kpi-value">{{ kpis.active_pod.pod | friendly_pod }}</p>
+        <p class="kpi-detail">{{ kpis.active_pod.count }} sighting{{ 's' if kpis.active_pod.count != 1 }}</p>
+      {% else %}
+        <p class="kpi-value">—</p>
+        <p class="kpi-detail">No specific pod identified yet this season.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="filter-note">
+    Looking for species totals or the full location breakdown? See <a href="/pivots">Pivot tables</a>.
+    To browse or filter by region, see <a href="/map">Map</a>.
+  </p>
 {% endblock %}

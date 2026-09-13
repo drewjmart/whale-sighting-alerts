@@ -49,8 +49,11 @@
   <ul>
     <li>
       <strong><a href="/">Home</a></strong> — a live count of sightings in the last
-      24 hours, broken out by species and nearest known location, plus running
-      totals by species and a list of named regions you can browse.
+      24 hours, broken out by species and nearest known location, plus at-a-glance
+      KPIs: this season's total and week-over-week trend, the most active location
+      this week, days since each species was last seen, and the most active orca
+      pod this season. Species totals and region browsing live on
+      <a href="/pivots">Pivot tables</a> and <a href="/map">Map</a> respectively.
     </li>
     <li>
       <strong><a href="/map">Map</a></strong> — every sighting plotted where it
@@ -66,7 +69,8 @@
     <li>
       <strong><a href="/pivots">Pivot tables</a></strong> — the same underlying
       counts as the charts, laid out as plain tables (pod × month, species ×
-      month, location × species) if you want the raw numbers.
+      month, location × species) with row and column totals, plus all-time
+      species totals, if you want the raw numbers.
     </li>
   </ul>
 
@@ -80,16 +84,18 @@
       since it's a much narrower time window by definition.
     </li>
     <li>
-      <strong>Tide height over the season</strong> — the actual tide curve for the
-      period shown, placed next to the chart above so you can eyeball how the two
-      relate.
+      <strong>Tide height vs. sightings</strong> — the tide curve next to daily
+      sighting counts (whatever species you've selected above), both scaled to a
+      0–100 range so they fit on one chart despite very different real units —
+      useful for eyeballing whether tide height itself tracks sighting frequency,
+      not just tide state (flood/ebb/slack).
     </li>
     <li>
-      <strong>Chinook CPUE vs. orca sightings</strong> — daily salmon counts at
-      Bonneville Dam next to daily orca sighting counts, both scaled to a 0–100
-      range so they fit on one chart (their real units are wildly different sizes).
-      This only applies to orca — humpback and gray whales don't eat salmon, so
-      there's nothing to compare there.
+      <strong>Chinook salmon activity vs. orca sightings</strong> — daily Chinook
+      salmon counts at Bonneville Dam next to daily orca sighting counts, both
+      scaled to a 0–100 range so they fit on one chart. This only applies to
+      orca — humpback and gray whales don't eat salmon, so there's nothing to
+      compare there.
     </li>
     <li>
       <strong>Sightings by season, by year</strong> — sightings grouped into

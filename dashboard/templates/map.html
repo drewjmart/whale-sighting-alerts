@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Map — Whale Sighting Tracker{% endblock %}
+{% block content %}
+  <h1>Sighting map</h1>
+  <p class="lede">
+    Every matching sighting, clustered by proximity — zoom in to split a cluster apart.
+    Purely spatial on purpose: for trends and correlations, see <a href="/analysis">Analysis</a>.
+  </p>
+
+  <form class="filter-bar" method="get" action="/map">
+    <label>
+      From
+      <input type="date" name="start_date" value="{{ start_date }}">
+    </label>
+    <label>
+      To
+      <input type="date" name="end_date" value="{{ end_date }}">
+    </label>
+    <fieldset class="checkbox-group">
+      <legend>Species</legend>
+      {% for s in all_species %}
+        <label class="checkbox-option">
+          <input type="checkbox" name="species" value="{{ s }}" {% if s in selected_species %}checked{% endif %}>
+          {{ s | friendly_species }}
+        </label>
+      {% endfor %}
+    </fieldset>
+    <fieldset class="checkbox-group">
+      <legend>Orca pod</legend>
+      {% for code, label in pod_rows %}
+        <label class="checkbox-option">
+          <input type="checkbox" name="pod" value="{{ code }}" {% if code in selected_pods %}checked{% endif %}>
+          {{ label }}
+        </label>
+      {% endfor %}
+    </fieldset>
+    <label>
+      Trust level
+      <select name="trust">
+        <option value="all" {% if trust == "all" %}selected{% endif %}>All sightings</option>
+        <option value="trusted" {% if trust == "trusted" %}selected{% endif %}>Trusted only</option>
+      </select>
+    </label>
+    <button type="submit">Apply</button>
+    {% if start_date or end_date or selected_species or selected_pods or trust != "all" %}
+      <a class="clear-filters" href="/map">Clear filters</a>
+    {% endif %}
+  </form>
+  <p class="filter-note">
+    Orca pod narrows orca sightings only — it doesn't affect humpback, gray whale, or other
+    species. "Trusted only" uses the trust flag Acartia reports on each sighting where it has one.
+  </p>
+
+  <div class="map-frame-card">
+    <iframe src="/map/frame?{{ frame_query }}" class="map-frame" title="Sighting map"></iframe>
+  </div>
+
+  <h2>Browse a region</h2>
+  <p class="filter-note">A plain table of sightings for one named place, if you'd rather not use the map.</p>
+  <ul>
+    {% for region in regions %}
+      <li><a href="/region/{{ region }}">{{ region }}</a></li>
+    {% endfor %}
+  </ul>
+{% endblock %}

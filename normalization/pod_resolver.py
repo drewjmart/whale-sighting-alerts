@@ -45,6 +45,21 @@ _SPECIES_MAP = {
 
 VALID_SPECIES = {"orca", "humpback", "gray_whale", "porpoise", "dolphin", "unknown"}
 
+# Display names (2026-09-08): VALID_SPECIES are internal/storage codes
+# (snake_case, matched against free text) -- every user-facing surface
+# (checkboxes, tables, map popups, KPI tiles) should show these instead,
+# so "gray_whale" never appears in the UI. One dict, reused everywhere via
+# species_display_name()/the "friendly_species" Jinja filter (dashboard/app.py)
+# rather than each template inventing its own title-casing.
+SPECIES_DISPLAY_NAMES: dict[str, str] = {
+    "orca": "Orca",
+    "humpback": "Humpback",
+    "gray_whale": "Gray whale",
+    "porpoise": "Porpoise",
+    "dolphin": "Dolphin",
+    "unknown": "Unidentified species",
+}
+
 
 def normalize_species(species_raw: str | None) -> str:
     """Map a source's free-text/enum species value to one of VALID_SPECIES.
@@ -53,6 +68,16 @@ def normalize_species(species_raw: str | None) -> str:
         return "unknown"
     key = species_raw.strip().lower()
     return _SPECIES_MAP.get(key, "unknown")
+
+
+def species_display_name(species: str | None) -> str:
+    """Friendly label for a species code. Falls back to a title-cased,
+    underscore-stripped version of whatever was passed rather than
+    KeyError-ing -- defensive only; every real value should be in
+    SPECIES_DISPLAY_NAMES since it's a closed set (VALID_SPECIES)."""
+    if not species:
+        return ""
+    return SPECIES_DISPLAY_NAMES.get(species, species.replace("_", " ").title())
 
 
 # ── Orca pod resolution ──────────────────────────────────────────────────
@@ -86,6 +111,30 @@ _ECOTYPE_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 # Stable output order regardless of match order in the text.
 _POD_CODE_ORDER = ["J", "K", "L", "BIGGS_TRANSIENT", "SRKW_UNSPECIFIED"]
+
+# Display names (2026-09-08) -- same rationale as SPECIES_DISPLAY_NAMES:
+# pod_code is a storage code ("BIGGS_TRANSIENT", "UNKNOWN"), not something
+# to show verbatim outside the map legend (which already spells these out
+# in context, e.g. "Orca -- Bigg's/Transient"). This is the shorter form
+# for a table cell or popup line, where "Orca -- " would be redundant.
+POD_DISPLAY_NAMES: dict[str, str] = {
+    "J": "J pod",
+    "K": "K pod",
+    "L": "L pod",
+    "BIGGS_TRANSIENT": "Bigg's/Transient",
+    "SRKW_UNSPECIFIED": "Southern Resident (pod unconfirmed)",
+    "UNKNOWN": "Pod unresolved",
+}
+
+
+def pod_code_display(pod_code: str | None) -> str:
+    """Friendly label for a (possibly comma-joined, e.g. "J,L") pod_code
+    value. Empty string for no pod code -- callers decide whether that
+    means "not orca" or "orca, unresolved" (UNKNOWN is a stored value in
+    its own right and is handled above, distinct from None/empty)."""
+    if not pod_code:
+        return ""
+    return ", ".join(POD_DISPLAY_NAMES.get(code, code) for code in pod_code.split(","))
 
 
 def resolve_pod(species: str, text: str | None) -> str | None:

@@ -222,6 +222,37 @@ def chinook_cpue_trend(
     return daily
 
 
+def _daily_sighting_counts(
+    conn: sqlite3.Connection, *, start_date: str | None = None, end_date: str | None = None,
+    species: str | list[str] | None = None,
+) -> pd.DataFrame:
+    """Daily sighting counts (date, sighting_count) -- shared by every
+    "does X correlate with sighting frequency" chart (Chinook CPUE, tide
+    height) so the date/species filter-clause building lives in one place
+    rather than being copy-pasted per chart. `species` accepts a single
+    code, a list, or None (all species)."""
+    clauses = []
+    params: dict = {}
+    if start_date:
+        clauses.append("sighting_date >= :start_date")
+        params["start_date"] = start_date
+    if end_date:
+        clauses.append("sighting_date <= :end_date")
+        params["end_date"] = end_date
+    if species:
+        species_list = [species] if isinstance(species, str) else list(species)
+        placeholders = ", ".join(f":species_{i}" for i in range(len(species_list)))
+        clauses.append(f"species IN ({placeholders})")
+        params.update({f"species_{i}": s for i, s in enumerate(species_list)})
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = conn.execute(
+        f"SELECT sighting_date AS date, COUNT(*) AS sighting_count FROM sightings {where} GROUP BY sighting_date",
+        params,
+    ).fetchall()
+    return pd.DataFrame([dict(r) for r in rows])
+
+
 def chinook_cpue_vs_orca_sightings(
     conn: sqlite3.Connection, *, start_date: str | None = None, end_date: str | None = None
 ) -> pd.DataFrame:
@@ -241,21 +272,7 @@ def chinook_cpue_vs_orca_sightings(
     viz-layer decision (viz/correlations.py), not baked into the data.
     """
     cpue = chinook_cpue_trend(conn, start_date=start_date, end_date=end_date)
-
-    clauses = ["species = 'orca'"]
-    params: dict = {}
-    if start_date:
-        clauses.append("sighting_date >= :start_date")
-        params["start_date"] = start_date
-    if end_date:
-        clauses.append("sighting_date <= :end_date")
-        params["end_date"] = end_date
-    where = " AND ".join(clauses)
-    rows = conn.execute(
-        f"SELECT sighting_date AS date, COUNT(*) AS sighting_count FROM sightings WHERE {where} GROUP BY sighting_date",
-        params,
-    ).fetchall()
-    counts = pd.DataFrame([dict(r) for r in rows])
+    counts = _daily_sighting_counts(conn, start_date=start_date, end_date=end_date, species="orca")
 
     if cpue.empty and counts.empty:
         return pd.DataFrame(columns=["date", "chinook_cpue", "sighting_count"])
@@ -291,3 +308,40 @@ def tide_height_trend(
     daily = df.groupby("sighting_date", as_index=False)["tide_height_ft"].mean()
     daily = daily.rename(columns={"sighting_date": "date"}).sort_values("date")
     return daily
+
+
+def tide_height_vs_sightings(
+    conn: sqlite3.Connection,
+    *,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    species: list[str] | None = None,
+) -> pd.DataFrame:
+    """Daily tide height alongside daily sighting counts, for judging by
+    eye whether tide height tracks sighting frequency -- the actual point
+    of the original tide-height chart (2026-09-08 feedback: it plotted
+    only the tide curve, with no sighting data on it at all, so there was
+    nothing to actually compare against).
+
+    Unlike the Chinook/orca pairing, this isn't scoped to one species --
+    tide affects general presence for any species, not a salmon-diet-
+    specific relationship -- so `species` here is the same page-wide
+    filter as everywhere else on /analysis, not hardcoded.
+
+    Tide height is still sourced from tide_height_trend() (averaged per
+    day from the tide_height_ft already stored per sighting), so it's
+    still only present for days with at least one sighting that carries
+    tide context -- see that function's docstring. Sighting count is
+    independent of that limitation: every sighting matching the species
+    filter counts, not just the ones that happen to carry tide data, so a
+    day's true volume isn't understated. Outer-joined on date, same
+    reasoning as chinook_cpue_vs_orca_sightings.
+    """
+    tide = tide_height_trend(conn, start_date=start_date, end_date=end_date, species=species)
+    counts = _daily_sighting_counts(conn, start_date=start_date, end_date=end_date, species=species)
+
+    if tide.empty and counts.empty:
+        return pd.DataFrame(columns=["date", "tide_height_ft", "sighting_count"])
+
+    merged = pd.merge(tide, counts, on="date", how="outer").sort_values("date")
+    return merged.reset_index(drop=True)

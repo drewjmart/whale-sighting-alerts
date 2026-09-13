@@ -9,8 +9,8 @@
       {% for s in sightings %}
         <tr>
           <td>{{ s.sighting_date }} {{ s.sighting_time or '' }}</td>
-          <td>{{ s.species }}</td>
-          <td>{{ s.pod_code or '' }}</td>
+          <td>{{ s.species | friendly_species }}</td>
+          <td>{{ s.pod_code | friendly_pod }}</td>
           <td>{{ s.source }}</td>
         </tr>
       {% endfor %}

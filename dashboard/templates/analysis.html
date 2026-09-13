@@ -20,7 +20,7 @@
       Species
       <select name="species" multiple size="3">
         {% for s in all_species %}
-          <option value="{{ s }}" {% if s in selected_species %}selected{% endif %}>{{ s }}</option>
+          <option value="{{ s }}" {% if s in selected_species %}selected{% endif %}>{{ s | friendly_species }}</option>
         {% endfor %}
       </select>
     </label>
@@ -30,7 +30,7 @@
     {% endif %}
   </form>
   <p class="filter-note">
-    Species filter doesn't change the Chinook CPUE chart — that comparison is always orca-only
+    Species filter doesn't change the Chinook salmon activity chart — that comparison is always orca-only
     (see its own note). Ctrl/Cmd-click to select multiple species.
   </p>
 

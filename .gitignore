@@ -7,8 +7,11 @@ __pycache__/
 .venv/
 
 # Historical trends feature -- regenerable, not source
+# Anchored to repo root (2026-09-08): a bare "map.html" also matched
+# dashboard/templates/map.html by filename coincidence once that template
+# was added, silently dropping real source from git.
 whale_sightings.sqlite3
-map.html
-trends_species.html
-trends_pod.html
+/map.html
+/trends_species.html
+/trends_pod.html
 .pytest_cache/

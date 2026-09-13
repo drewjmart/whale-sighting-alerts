@@ -89,14 +89,22 @@ def query_sightings(
     *,
     start_date: str | None = None,
     end_date: str | None = None,
-    species: str | None = None,
+    species: str | list[str] | None = None,
     bbox: tuple[float, float, float, float] | None = None,  # (min_lat, min_lon, max_lat, max_lon)
+    trusted_only: bool = False,
 ) -> list[sqlite3.Row]:
     """Flexible query used by both analysis/pivots.py (no location filter --
     trend analysis covers all WA waters) and analysis/location_query.py
     (bbox set -- "what's near San Juan Island"). See spec §1a: these are
     the same underlying data, queried two different ways for two different
-    purposes -- this function is the shared plumbing, not a merged filter."""
+    purposes -- this function is the shared plumbing, not a merged filter.
+
+    `species` accepts a single value or a list (same convention as
+    query_sightings_with_context's multi-select support). `trusted_only`
+    (2026-09-08, for /map's trust-level toggle) filters to rows where the
+    Acartia `trusted` flag is explicitly true -- untrusted AND unknown-trust
+    (NULL, for sources with no trust concept) are both excluded, since
+    "trusted only" should mean confirmed-trusted, not merely not-known-bad."""
     clauses = []
     params: dict[str, Any] = {}
 
@@ -107,13 +115,17 @@ def query_sightings(
         clauses.append("sighting_date <= :end_date")
         params["end_date"] = end_date
     if species:
-        clauses.append("species = :species")
-        params["species"] = species
+        species_list = [species] if isinstance(species, str) else list(species)
+        placeholders = ", ".join(f":species_{i}" for i in range(len(species_list)))
+        clauses.append(f"species IN ({placeholders})")
+        params.update({f"species_{i}": s for i, s in enumerate(species_list)})
     if bbox:
         min_lat, min_lon, max_lat, max_lon = bbox
         clauses.append("latitude BETWEEN :min_lat AND :max_lat")
         clauses.append("longitude BETWEEN :min_lon AND :max_lon")
         params.update(min_lat=min_lat, max_lat=max_lat, min_lon=min_lon, max_lon=max_lon)
+    if trusted_only:
+        clauses.append("trusted = 1")
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"SELECT * FROM sightings {where} ORDER BY sighting_date DESC, sighting_time DESC"
