@@ -72,6 +72,40 @@ will update automatically as more seasons accumulate.
 
 See [PR #2](https://github.com/drewjmart/whale-sighting-alerts/pull/2) for full implementation details.
 
+### Dashboard UX: Map Filters, Dark Theme, Home KPIs, and Review Fixes (Added September 2026)
+Extended the map to match the analysis page's interactivity, added a dark theme, replaced
+the home page's raw data dump with at-a-glance KPIs, and fixed several labeling/data-quality
+issues found during review.
+
+- Added marker clustering to the map — thousands of overlapping points now collapse into
+  numbered clusters that split apart on zoom, the real fix for the map having felt unreadable
+- Added species/pod checkboxes, date range, and a trusted-only toggle to the map, matching
+  the `/analysis` page's filter pattern
+- Added a dark theme (nav toggle, persisted per browser) — extends the existing color palette
+  rather than replacing it; contrast was verified against the real dark background, not just
+  inverted
+- Replaced the home page's raw species/region lists with four at-a-glance KPIs: season total
+  with week-over-week change, most active location (7-day window), days since last sighting
+  per species, and the most active orca pod this season; species totals and region browsing
+  moved to their existing dedicated pages (Pivot tables, Map)
+- Added row/column totals to all three pivot tables
+- Rebuilt the tide-height chart, which previously plotted only the tide curve with nothing to
+  compare it against — it now shows sighting counts alongside tide height
+- Relabeled the Chinook chart from "CPUE" (Catch Per Unit Effort, a fisheries term) to "salmon
+  activity/count" — the underlying data is a raw Bonneville Dam daily passage count, not a
+  true catch-per-effort figure; internal field names are unchanged
+- Replaced raw species/pod codes (`gray_whale`, `BIGGS_TRANSIENT`) with friendly display names
+  everywhere they reach the page
+
+**Worth noting:** reviewing a raw data sample surfaced two data-quality items worth tracking
+rather than fixing outright yet: a handful of source records carry out-of-region (California)
+coordinates, and `individual_id`/`location_name` are null on every stored sighting — every
+location name shown on the dashboard comes from the reverse-geocoder, not the source data
+itself.
+
+See [PR #3](https://github.com/drewjmart/whale-sighting-alerts/pull/3) for full implementation
+details.
+
 ## Sources
 
 The monitor currently aggregates from two RSS feeds:
