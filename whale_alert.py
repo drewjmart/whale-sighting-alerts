@@ -23,6 +23,7 @@ GMAIL USERS: Use an App Password, not your real password.
 import argparse
 import json
 import os
+import re
 import smtplib
 import ssl
 import sys
@@ -169,13 +170,30 @@ def save_state(state: dict) -> None:
 # (community events, unrelated local news) matches "whale" on an unfiltered feed
 # regardless of how narrow the rest of the keyword list is. Stripped out before
 # matching; a real sighting post still matches independently via "whale"/"orca" elsewhere.
-FALSE_POSITIVE_PHRASES = ["whale tail park", "whale tail playground"]
+#
+# "Orca K-8" is a real Seattle Public Schools elementary school -- confirmed
+# 2026-09-15 after a false alert on a school nurse's obituary listing the schools
+# she'd worked at: "...Beacon Hill, Roxhill, Orca, and Concord...". Stripping
+# "orca k-8"/"orca elementary" catches the common ways the school gets named; a
+# bare "Orca" in a list with no "K-8"/"elementary" right next to it (exactly what
+# happened here) can still slip through -- a known limit of substring matching.
+FALSE_POSITIVE_PHRASES = [
+    "whale tail park", "whale tail playground",
+    "orca k-8", "orca elementary",
+    "beacon hill, roxhill, orca, and concord",
+]
 
 
 def matches_keywords(text: str) -> bool:
-    lower = text.lower()
+    # Collapse runs of whitespace to a single space before matching -- RSS
+    # body text can contain irregular internal spacing (e.g. "and  Concord"
+    # with a double space, likely a collapsed HTML artifact from the
+    # source), which made a multi-word FALSE_POSITIVE_PHRASES entry
+    # silently fail to match the exact text it was added for. Applies to
+    # both sides of the comparison so it can't drift out of sync.
+    lower = re.sub(r"\s+", " ", text.lower())
     for phrase in FALSE_POSITIVE_PHRASES:
-        lower = lower.replace(phrase, "")
+        lower = lower.replace(re.sub(r"\s+", " ", phrase), "")
     return any(kw.lower() in lower for kw in CONFIG["keywords"])
 
 
