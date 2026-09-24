@@ -7,6 +7,7 @@
     Purely spatial on purpose: for trends and correlations, see <a href="/analysis">Analysis</a>.
   </p>
 
+  {% include "_date_shortcuts.html" %}
   <form class="filter-bar" method="get" action="/map">
     <label>
       From
@@ -41,14 +42,22 @@
         <option value="trusted" {% if trust == "trusted" %}selected{% endif %}>Trusted only</option>
       </select>
     </label>
+    <label class="checkbox-option">
+      <input type="checkbox" name="tracks" value="1" {% if show_tracks %}checked{% endif %}>
+      Show orca movement paths
+    </label>
     <button type="submit">Apply</button>
-    {% if start_date or end_date or selected_species or selected_pods or trust != "all" %}
+    {% if start_date or end_date or selected_species or selected_pods or trust != "all" or show_tracks %}
       <a class="clear-filters" href="/map">Clear filters</a>
     {% endif %}
   </form>
   <p class="filter-note">
     Orca pod narrows orca sightings only — it doesn't affect humpback, gray whale, or other
     species. "Trusted only" uses the trust flag Acartia reports on each sighting where it has one.
+    "Show orca movement paths" connects consecutive sightings of the same identified pod
+    (J/K/L/Bigg's-Transient only — no stable identity to track for other pods or species) within
+    48 hours of each other, with an arrow showing direction of travel. Off by default since an
+    unfiltered full season gets dense — narrow by date range or pod first for a readable result.
   </p>
 
   <div class="map-frame-card">
@@ -59,7 +68,7 @@
   <p class="filter-note">A plain table of sightings for one named place, if you'd rather not use the map.</p>
   <ul>
     {% for region in regions %}
-      <li><a href="/region/{{ region }}">{{ region }}</a></li>
+      <li><a href="/region/{{ region }}">{{ region | title }}</a></li>
     {% endfor %}
   </ul>
 {% endblock %}

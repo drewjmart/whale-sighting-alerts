@@ -11,11 +11,12 @@ this map's).
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import folium
 from folium import MacroElement
-from folium.plugins import MarkerCluster
+from folium.plugins import MarkerCluster, PolyLineTextPath
 from jinja2 import Template
 
 from analysis.location_query import query_point, query_region
@@ -126,6 +127,81 @@ def _pod_codes_of(row: sqlite3.Row) -> list[str]:
     return [p.strip() for p in raw.split(",")] if raw else []
 
 
+def _sighting_datetime(row: sqlite3.Row) -> datetime:
+    time_part = row["sighting_time"] or "00:00:00"
+    return datetime.fromisoformat(f"{row['sighting_date']}T{time_part}")
+
+
+# Pods with a stable, trackable identity -- SRKW_UNSPECIFIED and UNKNOWN
+# are deliberately excluded from movement tracks (see orca_pod_tracks()).
+_TRACKABLE_PODS = ("J", "K", "L", "BIGGS_TRANSIENT")
+
+
+def orca_pod_tracks(
+    rows: list[sqlite3.Row], max_gap_hours: float = 48.0
+) -> dict[str, list[list[tuple[float, float]]]]:
+    """Group orca sightings into per-pod movement tracks (2026-09-13) --
+    chronologically ordered points, split into separate segments wherever
+    the gap between consecutive sightings of the same pod exceeds
+    `max_gap_hours`. Operates on whatever `rows` build_map already
+    fetched, so a track always reflects every currently active filter
+    (date range, species, trust) automatically.
+
+    Only J/K/L/Bigg's-Transient are tracked -- SRKW_UNSPECIFIED and
+    UNKNOWN have no stable identity connecting one sighting to the next
+    (it could be a different, unidentified group each time), so drawing a
+    "track" for them would fabricate a movement claim the data can't
+    support. A sighting mentioning multiple pods (comma-joined, e.g.
+    "J,L") contributes its point to every pod it names -- same "explode"
+    convention as analysis/pivots.py::pod_by_month.
+
+    max_gap_hours=48 by default: a same-day or next-day resighting of a
+    pod is a real short-term movement signal worth connecting with a
+    line; a gap of weeks between two sightings of the same pod isn't
+    continuous movement, it's two separate, unrelated visits -- drawing
+    one long line across the map between them would misrepresent that as
+    a single directional swim.
+
+    Returns {pod_code: [segment, ...]} where each segment is a
+    chronological list of (lat, lon) points with 2+ entries (a lone
+    point, or the leftover start of an unfinished segment, can't show a
+    direction and is dropped); pods with no qualifying segment are
+    omitted entirely.
+    """
+    by_pod: dict[str, list[tuple[datetime, float, float]]] = {code: [] for code in _TRACKABLE_PODS}
+
+    for row in rows:
+        if row["species"] != "orca" or not row["pod_code"]:
+            continue
+        if row["latitude"] is None or row["longitude"] is None:
+            continue
+        when = _sighting_datetime(row)
+        for code in _pod_codes_of(row):
+            if code in by_pod:
+                by_pod[code].append((when, row["latitude"], row["longitude"]))
+
+    max_gap = max_gap_hours * 3600  # seconds
+    tracks: dict[str, list[list[tuple[float, float]]]] = {}
+    for code, points in by_pod.items():
+        points.sort(key=lambda p: p[0])
+        segments: list[list[tuple[float, float]]] = []
+        current: list[tuple[float, float]] = []
+        prev_when: datetime | None = None
+        for when, lat, lon in points:
+            if prev_when is not None and (when - prev_when).total_seconds() > max_gap:
+                if len(current) >= 2:
+                    segments.append(current)
+                current = []
+            current.append((lat, lon))
+            prev_when = when
+        if len(current) >= 2:
+            segments.append(current)
+        if segments:
+            tracks[code] = segments
+
+    return tracks
+
+
 def build_map(
     conn: sqlite3.Connection,
     *,
@@ -139,6 +215,7 @@ def build_map(
     pod_codes: list[str] | None = None,
     trusted_only: bool = False,
     theme: str = "light",
+    show_tracks: bool = False,
 ) -> folium.Map:
     """Build a folium map of matching sightings. Pass `region` (a known
     place name) OR `lat`/`lon` (an arbitrary point) to also filter by
@@ -157,7 +234,15 @@ def build_map(
     for the dark-step palette AND darkens the basemap itself -- light OSM
     tiles under a dark page would be its own readability problem. See the
     CSS-filter comment below for why it's a filtered OSM tile rather than
-    a dedicated dark tile provider."""
+    a dedicated dark tile provider.
+
+    `show_tracks` (2026-09-13) draws orca_pod_tracks() as directional
+    lines -- opt-in, default off: checked against the real data, an
+    unfiltered full-season view produces 20+ Bigg's/Transient segments
+    covering 492 points, which is a dense, hard-to-read tangle rather
+    than a useful signal. Narrowed by date range and/or pod (already
+    available via the existing filters) it's much more readable -- the
+    filter-note next to the checkbox says so."""
     if region:
         rows = query_region(
             conn, region, radius_miles, start_date=start_date, end_date=end_date,
@@ -225,6 +310,23 @@ def build_map(
             fill_opacity=0.8,
             popup=folium.Popup(_popup_html(row), max_width=250),
         ).add_to(cluster)
+
+    # Orca pod movement tracks (2026-09-13, opt-in -- see show_tracks'
+    # docstring above for why it defaults off). Drawn on top of the
+    # markers (added after them) so the direction arrows are never hidden
+    # underneath a cluster/marker. Each pod's color matches its markers
+    # and legend entry exactly (same pod_colors(theme) lookup).
+    if show_tracks:
+        pods = pod_colors(theme)
+        for code, segments in orca_pod_tracks(rows).items():
+            for segment in segments:
+                line = folium.PolyLine(
+                    locations=segment, color=pods[code], weight=3, opacity=0.75,
+                ).add_to(fmap)
+                PolyLineTextPath(
+                    line, "   ►   ", repeat=True, offset=8,
+                    attributes={"fill": pods[code], "font-weight": "bold", "font-size": "14"},
+                ).add_to(fmap)
 
     fmap.get_root().add_child(_MapLegend(theme=theme))
 

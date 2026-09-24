@@ -23,6 +23,10 @@
     (plus porpoise and dolphin, less commonly), reported anywhere in Washington's
     inland waters — not just West Seattle.
   </p>
+  <p>
+    The <strong>☀️/🌙 toggle</strong> in the top-right of every page switches between
+    light and dark mode and remembers your choice on this browser.
+  </p>
 
   <h2>Where the data comes from</h2>
   <p>
@@ -58,8 +62,11 @@
     <li>
       <strong><a href="/map">Map</a></strong> — every sighting plotted where it
       happened, color-coded by species; orca sightings are further colored by pod
-      (J/K/L/Bigg's-Transient) where that's known. Purely spatial — no charts or
-      correlations live here on purpose, so it stays easy to read.
+      (J/K/L/Bigg's-Transient) where that's known, with a date range, species/pod,
+      and trust-level filter, plus an optional "movement paths" overlay (see below).
+      Purely spatial otherwise — no charts or correlations live here on purpose, so
+      it stays easy to read. Nearby points collapse into numbered clusters that
+      split apart as you zoom in.
     </li>
     <li>
       <strong><a href="/analysis">Analysis</a></strong> — four charts that go
@@ -107,11 +114,27 @@
 
   <h2>Using the filters</h2>
   <p>
-    The Analysis page has a date range (From/To) and a species selector above the
+    <strong>Map</strong> has a date range, species checkboxes, orca pod checkboxes,
+    and a trust-level dropdown ("Trusted only" uses the trust flag Acartia reports
+    on a sighting where it has one). Orca pod narrows orca sightings only — it
+    doesn't affect humpback, gray whale, or other species. Checking
+    <strong>"Show orca movement paths"</strong> connects consecutive sightings of
+    the same identified pod (J/K/L/Bigg's-Transient — not Southern-Resident-
+    unspecified or fully unknown, which have no stable identity to connect from
+    one sighting to the next) within 48 hours of each other, with an arrow showing
+    which way it was moving. It's off by default because an unfiltered full season
+    is too dense to read — narrow by date range and/or a specific pod first.
+  </p>
+  <p>
+    <strong>Analysis</strong> has a date range and a species selector above the
     charts. Pick a range, Ctrl/Cmd-click to select one or more species, and click
     Apply — all four charts update together. The Chinook chart is the one
     exception: it's always orca-only no matter what you select there, since salmon
-    abundance has no meaning for the other species. "Clear filters" resets back to
-    the full dataset.
+    abundance has no meaning for the other species.
+  </p>
+  <p>
+    Both pages' date range fields also accept the "Last 7/14/30 days" shortcut
+    buttons above them, which fill in and apply the range for you. "Clear filters"
+    on either page resets back to the full dataset.
   </p>
 {% endblock %}

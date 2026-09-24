@@ -1,0 +1,13 @@
+{# Shared by /map and /analysis (2026-09-13) -- "last N days" shortcut
+   links, rendered above the raw From/To inputs. Plain <a> links to a
+   server-computed URL (today's date is only known server-side), same
+   no-JS-required philosophy as the rest of the filter forms. Expects
+   `shortcut_urls` ({days: url}) and `active_shortcut_days` (int or None)
+   in the including template's context. #}
+<div class="date-shortcuts">
+  {% for days, url in shortcut_urls.items() %}
+    <a class="date-shortcut{{ ' active' if active_shortcut_days == days else '' }}" href="{{ url }}">
+      Last {{ days }} days
+    </a>
+  {% endfor %}
+</div>
