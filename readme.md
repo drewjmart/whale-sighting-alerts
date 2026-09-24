@@ -106,6 +106,36 @@ itself.
 See [PR #3](https://github.com/drewjmart/whale-sighting-alerts/pull/3) for full implementation
 details.
 
+### Date-Range Shortcuts, Orca Movement Paths, and a False-Alert Fix (Added September 2026)
+Made the date filters faster to use, added directional movement to the map, and fixed a
+false whale alert.
+
+- Added "Last 7/14/30 days" shortcut buttons above the date filters on both the map and
+  analysis pages — they preserve any species, pod, or trust filters already set
+- Added an opt-in "Show orca movement paths" overlay to the map: arrows connect consecutive
+  sightings of the same identified pod (J/K/L/Bigg's-Transient) within 48 hours, showing
+  which way it was heading. Off by default — an unfiltered full season is too dense to read
+- Capitalized region names correctly in "Browse a region" and on region pages ("Alki Point,"
+  not "alki point")
+- Updated the About page for these features, plus map filters and the dark-theme toggle,
+  which had never been documented there
+- Fixed a false whale alert: an obituary mentioning "Orca K-8," a Seattle elementary school,
+  triggered a real email/Discord notification. Added it to the false-positive phrase list and
+  made keyword matching whitespace-tolerant after finding that irregular spacing in the feed
+  text would have silently defeated the fix
+
+**Worth noting:** salmon movement was deliberately left off the map. There's no geolocated
+salmon data in the system — only a single daily fish count at Bonneville Dam — so any arrow
+would have been invented. Movement paths are also limited to identified pods, since
+Southern-Resident-unspecified and unknown sightings have no stable identity to connect from
+one sighting to the next. One limit remains on the alert filter: a bare "Orca" in a list with
+no "K-8" or "elementary" beside it can still slip through, which is inherent to keyword
+matching.
+
+See [PR #4](https://github.com/drewjmart/whale-sighting-alerts/pull/4) and
+[PR #5](https://github.com/drewjmart/whale-sighting-alerts/pull/5) for full implementation
+details.
+
 ## Sources
 
 The monitor currently aggregates from two RSS feeds:
