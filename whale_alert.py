@@ -177,11 +177,39 @@ def save_state(state: dict) -> None:
 # "orca k-8"/"orca elementary" catches the common ways the school gets named; a
 # bare "Orca" in a list with no "K-8"/"elementary" right next to it (exactly what
 # happened here) can still slip through -- a known limit of substring matching.
+#
+# Three more confirmed 2026-09-29/30, all the same category -- a real West Seattle
+# thing whose name happens to contain a keyword:
+#   - "Orca Half" is an actual annual West Seattle half-marathon (Lincoln Park to
+#     Don Armeni); it shows up in the weekend-roundup posts every time it's run.
+#   - "Dolphin fan gear" -- Denny International Middle School's mascot is literally
+#     the Dolphins; a fundraiser post for their teams matched on the title alone.
+#   - "breach of ___" legal phrasing is handled separately below (regex, not a
+#     fixed phrase) since it's too open-ended to enumerate.
 FALSE_POSITIVE_PHRASES = [
     "whale tail park", "whale tail playground",
     "orca k-8", "orca elementary",
     "beacon hill, roxhill, orca, and concord",
+    "orca half",
+    "dolphin fan gear",
 ]
+
+# "breach of ___" (contract, trust, duty, statutory/regulatory/fiduciary
+# obligations, ...) is standard legal phrasing that will keep appearing in any
+# lawsuit/dispute coverage -- too open-ended to enumerate as fixed phrases (the
+# article that surfaced this used BOTH "breach of contract" and "breach of
+# statutory and regulatory duties" in the same sentence). Handled as a regex
+# instead of a fixed string.
+_FALSE_POSITIVE_PATTERNS = [re.compile(r"breach of \w+")]
+
+# "pod" collides with ordinary English words that contain it as a substring --
+# "podium"/"podiumed", "podcast", "tripod", "iPod" -- in a way none of the other
+# keywords do (confirmed 2026-09-29: a cross-country fundraiser post "podiumed at
+# their first invite" matched). Checked as a whole word (optionally plural)
+# instead of a plain substring. Every other keyword stays substring-matched on
+# purpose -- several are used as verbs with conjugations a strict word-boundary
+# check would break ("breaching"/"breached" need to keep matching "breach").
+_WORD_BOUNDARY_KEYWORDS = {"pod"}
 
 
 def matches_keywords(text: str) -> bool:
@@ -194,7 +222,16 @@ def matches_keywords(text: str) -> bool:
     lower = re.sub(r"\s+", " ", text.lower())
     for phrase in FALSE_POSITIVE_PHRASES:
         lower = lower.replace(re.sub(r"\s+", " ", phrase), "")
-    return any(kw.lower() in lower for kw in CONFIG["keywords"])
+    for pattern in _FALSE_POSITIVE_PATTERNS:
+        lower = pattern.sub("", lower)
+    for kw in CONFIG["keywords"]:
+        kw_lower = kw.lower()
+        if kw_lower in _WORD_BOUNDARY_KEYWORDS:
+            if re.search(r"\b" + re.escape(kw_lower) + r"s?\b", lower):
+                return True
+        elif kw_lower in lower:
+            return True
+    return False
 
 
 def hours_since(iso_ts: str | None) -> float | None:
