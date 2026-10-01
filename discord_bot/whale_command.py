@@ -70,6 +70,14 @@ def build_activity_summary(region: str | None = None) -> str:
     except AcartiaClientError as exc:
         return f"⚠️ Couldn't reach Acartia right now: {exc}"
 
+    # Most-recent-first (2026-10-01) -- Acartia returns these in ascending
+    # order. Sorting before the MAX_SIGHTINGS_IN_REPLY truncation below
+    # matters, not just for display order: unsorted, a region/season with
+    # more than 10 reports would show the 10 OLDEST and silently drop the
+    # most recent ones into "...and N more" -- exactly backwards from what
+    # "current activity" should surface.
+    sightings = sorted(sightings, key=lambda s: s.created_utc, reverse=True)
+
     if region:
         key = region.strip().lower()
         if key not in _LOCATIONS:
