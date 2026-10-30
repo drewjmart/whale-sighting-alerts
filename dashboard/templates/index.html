@@ -12,7 +12,7 @@
         {% for g in recent.groups %}
           <li>
             <strong>{{ g.count }}</strong> sighting{{ 's' if g.count != 1 }} of
-            <strong>{{ g.species }}</strong> near <strong>{{ g.location }}</strong>
+            <strong>{{ g.species | friendly_species }}</strong> near <strong>{{ g.location }}</strong>
           </li>
         {% endfor %}
       </ul>
