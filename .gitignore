@@ -4,6 +4,8 @@ whale_alert.log
 whale_alert.log.bak
 discord_bot_runner.log
 discord_bot_runner.log.bak
+ingestion_refresh.log
+whale_sightings.sqlite3.bak-*
 __pycache__/
 *.pyc
 .venv/
