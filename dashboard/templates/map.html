@@ -47,8 +47,8 @@
       Show orca movement paths
     </label>
     <button type="submit">Apply</button>
-    {% if start_date or end_date or selected_species or selected_pods or trust != "all" or show_tracks %}
-      <a class="clear-filters" href="/map">Clear filters</a>
+    {% if filters_active %}
+      <a class="clear-filters" href="/map">Reset filters</a>
     {% endif %}
   </form>
   <p class="filter-note">
@@ -56,8 +56,9 @@
     species. "Trusted only" uses the trust flag Acartia reports on each sighting where it has one.
     "Show orca movement paths" connects consecutive sightings of the same identified pod
     (J/K/L/Bigg's-Transient only — no stable identity to track for other pods or species) within
-    48 hours of each other, with an arrow showing direction of travel. Off by default since an
-    unfiltered full season gets dense — narrow by date range or pod first for a readable result.
+    48 hours of each other, with an arrow showing direction of travel. Off by default since a
+    long date range gets dense — the default last 30 days is usually readable; narrow further by
+    date range or pod if not.
   </p>
 
   <div class="map-frame-card">

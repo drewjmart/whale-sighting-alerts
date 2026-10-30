@@ -26,13 +26,15 @@
       </select>
     </label>
     <button type="submit">Apply</button>
-    {% if start_date or end_date or selected_species %}
-      <a class="clear-filters" href="/analysis">Clear filters</a>
+    {% if filters_active %}
+      <a class="clear-filters" href="/analysis">Reset filters</a>
     {% endif %}
   </form>
   <p class="filter-note">
-    Species filter doesn't change the Chinook salmon activity chart — that comparison is always orca-only
-    (see its own note). Ctrl/Cmd-click to select multiple species.
+    Showing the last 30 days by default — pick "All time" above for the full history (the
+    seasonal chart in particular needs it). Species filter doesn't change the Chinook salmon
+    activity chart — that comparison is always orca-only (see its own note). Ctrl/Cmd-click to
+    select multiple species.
   </p>
 
   <div class="chart-pair">
