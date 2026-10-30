@@ -8,7 +8,7 @@ this PR -- see README §Phase 2 for the (separate, later) Render step.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -112,30 +112,70 @@ def index():
 
 _DATE_SHORTCUT_DAYS = (7, 14, 30)
 
+# Every date filter (/map and /analysis) opens on the last 30 days unless
+# the URL says otherwise (2026-10-29).
+DEFAULT_RANGE_DAYS = 30
 
-def _date_shortcut_urls(base_path: str, preserved_params: dict) -> dict[int, str]:
-    """'Last N days' shortcut links for a filter form (2026-09-13) -- one
-    helper shared by /map and /analysis so both pages' shortcuts are built
-    the same way, rather than each view re-deriving today's date and
-    re-encoding params. `preserved_params` carries every OTHER currently
-    set filter (species, pod, trust, ...) so clicking a shortcut narrows
-    the date range without silently discarding filters set elsewhere on
-    the same form."""
-    today = date.today()
-    urls = {}
+
+def _today() -> date:
+    """Today's date in UTC, not the machine's local date. Sightings are
+    stored with UTC dates/times, so a window ending at the LOCAL date cuts
+    off the newest sightings every evening (e.g. 7pm Pacific on the 29th is
+    already the 30th in UTC -- the latest sighting in the database was
+    dated the 30th while date.today() said the 29th)."""
+    return datetime.now(timezone.utc).date()
+
+
+def _date_range_from_args(args) -> tuple[str | None, str | None]:
+    """(start_date, end_date) for a filter page. With neither param in the
+    URL at all, default to the last DEFAULT_RANGE_DAYS days. A form submit
+    with the date fields blanked sends the params present-but-empty, which
+    means "no date limit" (all time) -- distinguishing "absent" from
+    "empty" is what keeps the full history reachable."""
+    if "start_date" not in args and "end_date" not in args:
+        today = _today()
+        return (today - timedelta(days=DEFAULT_RANGE_DAYS)).isoformat(), today.isoformat()
+    return args.get("start_date") or None, args.get("end_date") or None
+
+
+def _is_default_range(start_date: str | None, end_date: str | None) -> bool:
+    today = _today()
+    return (
+        start_date == (today - timedelta(days=DEFAULT_RANGE_DAYS)).isoformat()
+        and end_date == today.isoformat()
+    )
+
+
+def _date_shortcut_urls(base_path: str, preserved_params: dict) -> dict[int | str, str]:
+    """'Last N days' (plus 'all' = All time) shortcut links for a filter
+    form (2026-09-13) -- one helper shared by /map and /analysis so both
+    pages' shortcuts are built the same way, rather than each view
+    re-deriving today's date and re-encoding params. `preserved_params`
+    carries every OTHER currently set filter (species, pod, trust, ...) so
+    clicking a shortcut narrows the date range without silently discarding
+    filters set elsewhere on the same form."""
+    today = _today()
+    urls: dict[int | str, str] = {}
     for days in _DATE_SHORTCUT_DAYS:
         params = dict(preserved_params)
         params["start_date"] = (today - timedelta(days=days)).isoformat()
         params["end_date"] = today.isoformat()
         urls[days] = f"{base_path}?{urlencode(params, doseq=True)}"
+    # Present-but-empty date params = no date limit (see _date_range_from_args).
+    all_time = dict(preserved_params, start_date="", end_date="")
+    urls["all"] = f"{base_path}?{urlencode(all_time, doseq=True)}"
     return urls
 
 
-def _active_shortcut_days(start_date: str | None, end_date: str | None) -> int | None:
+def _active_shortcut_days(start_date: str | None, end_date: str | None) -> int | str | None:
     """Which shortcut (if any) exactly matches the current start/end date
-    -- purely cosmetic, to highlight the active one; returns None if the
-    current range doesn't match any shortcut (including no range at all)."""
-    today = date.today()
+    -- purely cosmetic, to highlight the active one. 'all' when there's no
+    date limit at all (only reachable via an explicit all-time request,
+    since an absent range defaults to 30 days); None if the current range
+    is custom and matches no shortcut."""
+    if not start_date and not end_date:
+        return "all"
+    today = _today()
     if not start_date or not end_date or end_date != today.isoformat():
         return None
     for days in _DATE_SHORTCUT_DAYS:
@@ -145,9 +185,10 @@ def _active_shortcut_days(start_date: str | None, end_date: str | None) -> int |
 
 
 def _map_filters_from_request() -> dict:
+    start_date, end_date = _date_range_from_args(request.args)
     return dict(
-        start_date=request.args.get("start_date") or None,
-        end_date=request.args.get("end_date") or None,
+        start_date=start_date,
+        end_date=end_date,
         region=request.args.get("region") or None,
         species=request.args.getlist("species") or None,
         pod=request.args.getlist("pod") or None,
@@ -168,11 +209,13 @@ def map_view():
     shareable/bookmarkable, no JS required to apply a filter."""
     filters = _map_filters_from_request()
 
-    frame_params: dict = {}
-    if filters["start_date"]:
-        frame_params["start_date"] = filters["start_date"]
-    if filters["end_date"]:
-        frame_params["end_date"] = filters["end_date"]
+    # Always pass the date params to the iframe, even when empty: absent
+    # means "default to 30 days" in _date_range_from_args, so an explicit
+    # all-time request has to be forwarded as present-but-empty.
+    frame_params: dict = {
+        "start_date": filters["start_date"] or "",
+        "end_date": filters["end_date"] or "",
+    }
     if filters["region"]:
         frame_params["region"] = filters["region"]
     if filters["species"]:
@@ -202,6 +245,13 @@ def map_view():
         regions=known_regions(),
         shortcut_urls=_date_shortcut_urls("/map", preserved),
         active_shortcut_days=_active_shortcut_days(filters["start_date"], filters["end_date"]),
+        # "Reset filters" only when something differs from the page's
+        # default view (last 30 days, nothing else set).
+        filters_active=bool(
+            not _is_default_range(filters["start_date"], filters["end_date"])
+            or filters["species"] or filters["pod"] or filters["region"]
+            or filters["trust"] != "all" or filters["tracks"]
+        ),
     )
 
 
@@ -267,8 +317,7 @@ def analysis_view():
     form submit, so the filtered view is a shareable/bookmarkable URL and
     works with no JS at all, same pattern as /map's ?region=&start_date=.
     """
-    start_date = request.args.get("start_date") or None
-    end_date = request.args.get("end_date") or None
+    start_date, end_date = _date_range_from_args(request.args)
     species = request.args.getlist("species") or None
 
     theme = _current_theme()
@@ -299,6 +348,7 @@ def analysis_view():
         end_date=end_date or "",
         shortcut_urls=_date_shortcut_urls("/analysis", preserved),
         active_shortcut_days=_active_shortcut_days(start_date, end_date),
+        filters_active=bool(not _is_default_range(start_date, end_date) or species),
     )
 
 

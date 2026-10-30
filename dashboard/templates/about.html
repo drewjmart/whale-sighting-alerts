@@ -42,6 +42,12 @@
     want the details or need to cite something.
   </p>
   <p>
+    <strong>How fresh is it?</strong> The dashboard's database refreshes once a week
+    (Sunday early morning), so "last 24 hours" and the other recent-activity numbers
+    on the Home page are only as current as the last refresh. For live activity right
+    now, use the <code>/whales</code> command in Discord, which reads Acartia directly.
+  </p>
+  <p>
     A quick honesty note: this dashboard currently holds a single season of data
     (spring through early fall 2026). Anything here that would need multiple years
     to really prove — like whether sightings repeat in the same months every
@@ -133,8 +139,12 @@
     abundance has no meaning for the other species.
   </p>
   <p>
-    Both pages' date range fields also accept the "Last 7/14/30 days" shortcut
-    buttons above them, which fill in and apply the range for you. "Clear filters"
-    on either page resets back to the full dataset.
+    <strong>Both pages open on the last 30 days.</strong> The "Last 7/14/30 days"
+    buttons above the date range fill in and apply a different window for you, and
+    <strong>"All time"</strong> removes the date limit entirely (you can also clear
+    both date fields and click Apply). "Reset filters" returns the page to its
+    default view — the last 30 days with nothing else selected. Dates are UTC, the
+    same clock the sighting reports use, so late in the evening Pacific time
+    "today" may already read as tomorrow's date.
   </p>
 {% endblock %}
